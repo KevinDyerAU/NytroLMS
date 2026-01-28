@@ -194,21 +194,219 @@ SendSmsNotification::dispatch($user->phone_number, 'Your assessment has been mar
 
 This approach ensures that API calls to the notification service do not block the main application thread.
 
-## 4. NytroAI & n8n Workflow Configuration
+## 4. API Key Management
+
+Secure management of API keys is critical for the integration between KeyLMSNytro, n8n, and NytroAI. This section outlines the recommended approach for handling API keys across all integration points.
+
+### 4.1. Architecture Overview
+
+API keys will be managed at **three levels**:
+
+1.  **KeyLMSNytro to n8n**: A shared secret to authenticate requests from KeyLMSNytro to the n8n webhook.
+2.  **n8n to NytroAI**: API keys for NytroAI's Supabase Edge Functions, stored securely in n8n.
+3.  **n8n to KeyLMSNytro (Callback)**: A shared secret to authenticate webhook callbacks from n8n back to KeyLMSNytro.
+
+```mermaid
+sequenceDiagram
+    participant LMS as KeyLMSNytro
+    participant N8N as n8n Workflow
+    participant AI as NytroAI
+
+    LMS->>N8N: POST /webhook (Header: X-API-Key: LMS_TO_N8N_KEY)
+    Note over N8N: Validates X-API-Key
+    N8N->>AI: POST /validate-assessment (Header: Authorization: Bearer NYTROAI_API_KEY)
+    Note over AI: Validates Bearer Token
+    AI-->>N8N: JSON Response
+    N8N->>LMS: POST /api/integration/callback (Header: X-Callback-Key: N8N_TO_LMS_KEY)
+    Note over LMS: Validates X-Callback-Key
+```
+
+### 4.2. KeyLMSNytro Configuration
+
+Store all API keys and webhook URLs in the `.env` file. **Never commit API keys to version control.**
+
+**`.env` File:**
+
+```dotenv
+# n8n Integration
+N8N_WEBHOOK_BASE_URL=https://your-n8n-instance.com/webhook
+N8N_PREMARK_WEBHOOK_PATH=/premark-assessment
+N8N_TRAINER_REVIEW_WEBHOOK_PATH=/trainer-review
+N8N_SMS_WEBHOOK_PATH=/send-sms
+
+# API Key for KeyLMSNytro -> n8n requests
+N8N_API_KEY=your-secure-random-key-here
+
+# API Key for n8n -> KeyLMSNytro callbacks
+INTEGRATION_CALLBACK_KEY=another-secure-random-key-here
+```
+
+**`config/services.php`:**
+
+```php
+return [
+    // ... other services
+
+    'nytroai' => [
+        'n8n_base_url' => env('N8N_WEBHOOK_BASE_URL'),
+        'premark_path' => env('N8N_PREMARK_WEBHOOK_PATH'),
+        'trainer_review_path' => env('N8N_TRAINER_REVIEW_WEBHOOK_PATH'),
+        'sms_path' => env('N8N_SMS_WEBHOOK_PATH'),
+        'api_key' => env('N8N_API_KEY'),
+        'callback_key' => env('INTEGRATION_CALLBACK_KEY'),
+    ],
+];
+```
+
+### 4.3. Sending Authenticated Requests to n8n
+
+Create a dedicated service class to handle all API calls to n8n, ensuring the API key is always included.
+
+**`app/Services/NytroAIIntegrationService.php`:**
+
+```php
+namespace App\Services;
+
+use Illuminate\Support\Facades\Http;
+use Illuminate\Support\Facades\Log;
+
+class NytroAIIntegrationService
+{
+    protected string $baseUrl;
+    protected string $apiKey;
+
+    public function __construct()
+    {
+        $this->baseUrl = config('services.nytroai.n8n_base_url');
+        $this->apiKey = config('services.nytroai.api_key');
+    }
+
+    public function requestPreMark(array $payload): void
+    {
+        $this->sendRequest(
+            config('services.nytroai.premark_path'),
+            $payload
+        );
+    }
+
+    public function requestTrainerReview(array $payload): void
+    {
+        $this->sendRequest(
+            config('services.nytroai.trainer_review_path'),
+            $payload
+        );
+    }
+
+    protected function sendRequest(string $path, array $payload): void
+    {
+        try {
+            Http::withHeaders([
+                'X-API-Key' => $this->apiKey,
+                'Content-Type' => 'application/json',
+            ])->post($this->baseUrl . $path, $payload);
+        } catch (\Exception $e) {
+            Log::error('NytroAI Integration Error', [
+                'path' => $path,
+                'error' => $e->getMessage(),
+            ]);
+        }
+    }
+}
+```
+
+### 4.4. Securing the Callback Endpoint
+
+Create a middleware to validate incoming webhook callbacks from n8n.
+
+**`app/Http/Middleware/ValidateIntegrationCallback.php`:**
+
+```php
+namespace App\Http\Middleware;
+
+use Closure;
+use Illuminate\Http\Request;
+use Symfony\Component\HttpFoundation\Response;
+
+class ValidateIntegrationCallback
+{
+    public function handle(Request $request, Closure $next): Response
+    {
+        $expectedKey = config('services.nytroai.callback_key');
+        $providedKey = $request->header('X-Callback-Key');
+
+        if (!$providedKey || !hash_equals($expectedKey, $providedKey)) {
+            return response()->json(['error' => 'Unauthorized'], 401);
+        }
+
+        return $next($request);
+    }
+}
+```
+
+**Register the Middleware** in `app/Http/Kernel.php`:
+
+```php
+protected $middlewareAliases = [
+    // ... other middleware
+    'integration.callback' => \App\Http\Middleware\ValidateIntegrationCallback::class,
+];
+```
+
+**Apply to the Callback Route** in `routes/api.php`:
+
+```php
+Route::post('/integration/callback', [IntegrationCallbackController::class, 'handle'])
+    ->middleware('integration.callback');
+```
+
+### 4.5. n8n Workflow Configuration
+
+Within n8n, API keys should be stored as **credentials**, not hardcoded in workflows.
+
+1.  **Create Credentials**: In n8n, go to **Credentials** and create new entries for:
+    *   `KeyLMSNytro API Key` (the `N8N_API_KEY` value)
+    *   `NytroAI API Key` (the Supabase Edge Function key)
+    *   `KeyLMSNytro Callback Key` (the `INTEGRATION_CALLBACK_KEY` value)
+
+2.  **Validate Incoming Requests**: In the n8n webhook trigger node, add a code node to validate the `X-API-Key` header against the stored credential.
+
+3.  **Use Credentials in HTTP Nodes**: When calling NytroAI or the KeyLMSNytro callback, use the stored credentials to populate the `Authorization` or `X-Callback-Key` headers.
+
+### 4.6. Azure Key Vault Integration (Recommended for Production)
+
+For production deployments on Azure, it is recommended to store all API keys in **Azure Key Vault** rather than in `.env` files or n8n credentials directly.
+
+**Benefits:**
+
+*   Centralized secret management.
+*   Automatic key rotation.
+*   Audit logging of secret access.
+*   Integration with Azure App Service via Managed Identity.
+
+**Implementation:**
+
+1.  Store `N8N_API_KEY`, `INTEGRATION_CALLBACK_KEY`, and `NYTROAI_API_KEY` in Azure Key Vault.
+2.  Configure Azure App Service to access Key Vault using a Managed Identity.
+3.  Reference secrets in App Service configuration using Key Vault references (e.g., `@Microsoft.KeyVault(SecretUri=https://your-vault.vault.azure.net/secrets/N8N-API-KEY)`).
+4.  For n8n, if self-hosted on Azure, configure it to pull secrets from Key Vault at startup.
+
+## 5. NytroAI & n8n Workflow Configuration
 
 ### For KeyLMSNytro:
 
-*   Store n8n webhook URLs in the `.env` file.
-*   Implement a robust HTTP client (e.g., Guzzle) for making API calls to n8n.
-*   Create a dedicated API route (`routes/api.php`) to receive webhook callbacks from n8n (e.g., `/api/integration/callback`). This route must be protected by a secret key.
+*   Store n8n webhook URLs and API keys in the `.env` file (or Azure Key Vault for production).
+*   Use the `NytroAIIntegrationService` class for all API calls to n8n.
+*   Protect the callback endpoint with the `ValidateIntegrationCallback` middleware.
 
 ### For n8n:
 
 *   Create a new workflow for each integration point (pre-marking, trainer review, SMS).
+*   Store all API keys as n8n credentials.
+*   Validate incoming requests using the `X-API-Key` header.
 *   The workflow will receive the payload from KeyLMSNytro.
 *   It will then call the appropriate NytroAI Supabase Edge Function (`/validate-assessment` or a new function for trainer reviews).
 *   For pre-marking, the workflow must first create a temporary document (e.g., Markdown) from the student's answers and upload it to a location accessible by NytroAI (or use the Gemini File API).
-*   After receiving the response from NytroAI, the workflow will call the webhook callback URL in KeyLMSNytro to send the results back.
+*   After receiving the response from NytroAI, the workflow will call the webhook callback URL in KeyLMSNytro to send the results back, including the `X-Callback-Key` header.
 
 ## 5. Conclusion
 
