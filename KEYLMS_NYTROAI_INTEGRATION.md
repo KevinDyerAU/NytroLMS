@@ -21,29 +21,29 @@ The integration will follow a decoupled, event-driven architecture. KeyLMSNytro 
 
 ```mermaid
 graph TD
-    subgraph KeyLMSNytro (Laravel)
-        A[Student Submits Quiz] --> B{Dispatch Event: StudentAssessmentSubmitted};
-        B --> C[EventListener];
-        C -- API Request (Payload) --> D[n8n Workflow];
-        T[Trainer Submits Feedback] --> U{Dispatch Event: TrainerFeedbackProvided};
-        U --> V[EventListener];
-        V -- API Request (Payload) --> D;
+    subgraph KeyLMSNytro_Request["KeyLMSNytro - Laravel"]
+        A[Student Submits Quiz] --> B{Dispatch Event}
+        B --> C[EventListener]
+        C -->|API Request| D
+        T[Trainer Submits Feedback] --> U{Dispatch Event}
+        U --> V[EventListener]
+        V -->|API Request| D
     end
 
-    subgraph n8n (Workflow Orchestration)
-        D -- Processes Payload --> E(Call NytroAI API);
+    subgraph n8n_Orchestration["n8n - Workflow Orchestration"]
+        D[n8n Workflow] -->|Processes Payload| E[Call NytroAI API]
     end
 
-    subgraph NytroAI (Supabase)
-        E -- JSON Request --> F[Edge Function: /validate-assessment];
-        F -- Interacts with --> G[AI Provider (Gemini/Azure)];
-        F -- Stores Results --> H[Supabase DB];
+    subgraph NytroAI_Backend["NytroAI - Supabase"]
+        E -->|JSON Request| F[Edge Function]
+        F --> G[AI Provider]
+        F --> H[Supabase DB]
     end
 
-    subgraph KeyLMSNytro (Laravel)
-        D -- Webhook (AI Results) --> I[API Endpoint: /api/integration/callback];
-        I --> J[Store AI Feedback in DB];
-        J --> K[Update UI];
+    subgraph KeyLMSNytro_Response["KeyLMSNytro - Callback"]
+        D -->|Webhook Response| I[API Callback Endpoint]
+        I --> J[Store AI Feedback]
+        J --> K[Update UI]
     end
 ```
 
