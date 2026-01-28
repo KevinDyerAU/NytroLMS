@@ -1,0 +1,42 @@
+{
+    "private": true,
+    "scripts": {
+        "dev": "npm run development",
+        "development": "mix",
+        "watch": "mix watch",
+        "watch-poll": "mix watch -- --watch-options-poll=1000",
+        "hot": "mix watch --hot",
+        "production": "mix --production"
+    },
+    "dependencies": {
+        "tinymce": "^6.7.0",
+        "axios-retry": "^3.3.1",
+        "bootstrap": "5.0.1",
+        "dompurify": "^3.2.5",
+        "lucide": "^0.542.0",
+        "moment": "^2.29.4",
+        "moment-timezone": "^0.5.43"
+    },
+    "devDependencies": {
+        "@prettier/plugin-php": "^0.17.3",
+        "axios": "1.8.2",
+        "cross-env": "^5.2.1",
+        "jquery": "^3.6",
+        "laravel-mix": "^6.0.39",
+        "lodash": "^4.17.19",
+        "popper.js": "^1.16.1",
+        "postcss": "8.4.31",
+        "prettier": "^2.3.2",
+        "resolve-url-loader": "^5.0.0",
+        "rtlcss": "^3.5.0",
+        "sass": "1.30.0",
+        "sass-loader": "^11.0.1"
+    },
+    "overrides": {
+        "react-autosize-textarea": {
+            "react": "^18.0.0",
+            "react-dom": "^18.0.0"
+        },
+        "nanoid": "^5.0.9"
+    }
+}

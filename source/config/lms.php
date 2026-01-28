@@ -1,0 +1,36 @@
+<?php
+
+return [
+    'status' => [
+        'ATTEMPTING' => ['class' => 'secondary', 'color' => 'grey', 'icon' => '', 'message' => 'Your quiz is not submitted yet.'],
+        'SUBMITTED' => ['class' => 'primary', 'color' => 'blue', 'icon' => '', 'message' => 'Thank you, your quiz is submitted successfully.'],
+        'MARKED' => ['class' => 'info', 'color' => 'cyan', 'icon' => '', 'message' => 'This is marked completed.'],
+        'REVIEWING' => ['class' => 'info', 'color' => 'cyan', 'icon' => '', 'message' => 'Please be patient. Your quiz is under review.'],
+        'RETURNED' => ['class' => 'danger', 'color' => 'red', 'icon' => '', 'message' => 'Unfortunately your last attempt did not make through.'],
+        'NOT SATISFACTORY' => ['class' => 'warning', 'color' => 'orange', 'icon' => '', 'message' => 'Unfortunately your quiz returned as your last attempt did not make through.'],
+        'SATISFACTORY' => ['class' => 'success', 'color' => 'green', 'icon' => '', 'message' => 'Congratulation! You have successfully cleared this quiz.'],
+        'FAIL' => ['class' => 'danger', 'color' => 'red', 'icon' => '', 'message' => 'Unfortunately your last attempt did not make through.'],
+        'OVERDUE' => ['class' => 'warning', 'color' => 'orange', 'icon' => '', 'message' => 'Attention: Your quiz is overdue. Kindly submit it ASAP.'],
+        'COMPLETED' => ['class' => 'success', 'color' => 'green', 'icon' => '', 'message' => 'Successfully Completed.'],
+        'CERTIFIED' => ['class' => 'success', 'color' => 'green', 'icon' => '', 'message' => 'Certificate issued.'],
+        'CERTIFICATE_READY' => ['class' => 'info', 'color' => 'cyan', 'icon' => '', 'message' => 'Ready for Certificate.'],
+        'COMPETENT' => ['class' => 'purple', 'color' => 'purple', 'icon' => '', 'message' => 'Competent.'],
+    ],
+    'course_category' => [
+        'anaconda' => 'Anaconda',
+        'accelerator' => 'Accelerator',
+        'accelerator_online' => 'Accelerator online',
+        'certificate2_qualifications' => 'Certificate II Qualifications',
+        'certificate3_qualifications' => 'Certificate III Qualifications',
+        'certificate4_qualifications' => 'Certificate IV Qualifications',
+        'skill_sets' => 'Skill sets',
+        'traineeship_qualifications' => 'Traineeship Qualifications',
+        'progression_pathway' => 'Progression Pathway',
+        'non_accredited' => 'Employability Courses',
+        'semester2' => 'Semester 2',
+        'superseded' => 'Superseded',
+        'no_longer_in_use' => 'No Longer in Use',
+        'other' => 'Other',
+        'uncategorized' => 'Uncategorized',
+    ],
+];

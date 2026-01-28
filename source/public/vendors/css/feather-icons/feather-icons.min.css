@@ -1,0 +1,7 @@
+/* Feather icon base size */
+.feather,
+[data-lucide] {
+    height: 1rem;
+    width: 1rem;
+    display: inline-block;
+}

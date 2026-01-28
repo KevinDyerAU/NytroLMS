@@ -1,0 +1,37 @@
+{
+    "php.validate.executablePath": "php",
+    "files.associations": {
+        "*.php": "php"
+    },
+    "php.suggest.basic": false,
+    "emmet.includeLanguages": {
+        "blade": "html"
+    },
+    "files.exclude": {
+        "**/vendor": true,
+        "**/node_modules": true,
+        "**/storage": true,
+        "**/bootstrap/cache": true
+    },
+    "[php]": {
+        "editor.formatOnSave": false
+    },
+    "[javascript]": {
+        "editor.defaultFormatter": "esbenp.prettier-vscode",
+        "editor.formatOnSave": false
+    },
+    "[typescript]": {
+        "editor.defaultFormatter": "esbenp.prettier-vscode",
+        "editor.formatOnSave": false
+    },
+    "[vue]": {
+        "editor.defaultFormatter": "esbenp.prettier-vscode",
+        "editor.formatOnSave": false
+    },
+    "[json]": {
+        "editor.defaultFormatter": "esbenp.prettier-vscode",
+        "editor.formatOnSave": false
+    },
+    "prettier.configPath": ".prettierrc",
+    "prettier.ignorePath": ".prettierignore"
+}

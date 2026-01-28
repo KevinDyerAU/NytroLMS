@@ -1,0 +1,65 @@
+{
+    "version": "2.0.0",
+    "tasks": [
+        {
+            "label": "Pint: Format Current File",
+            "type": "shell",
+            "command": "./vendor/bin/pint",
+            "args": ["${file}"],
+            "group": "build",
+            "presentation": {
+                "echo": true,
+                "reveal": "silent",
+                "focus": false,
+                "panel": "shared"
+            },
+            "problemMatcher": []
+        },
+        {
+            "label": "Pint: Format All Files",
+            "type": "shell",
+            "command": "./vendor/bin/pint",
+            "group": "build",
+            "presentation": {
+                "echo": true,
+                "reveal": "always",
+                "focus": false,
+                "panel": "shared"
+            },
+            "problemMatcher": []
+        },
+        {
+            "label": "Prettier: Format Current File",
+            "type": "shell",
+            "command": "npx",
+            "args": ["prettier", "--write", "${file}"],
+            "group": "build",
+            "presentation": {
+                "echo": true,
+                "reveal": "silent",
+                "focus": false,
+                "panel": "shared"
+            },
+            "problemMatcher": []
+        },
+        {
+            "label": "Prettier: Format All JS Files",
+            "type": "shell",
+            "command": "npx",
+            "args": [
+                "prettier",
+                "--write",
+                "resources/js/**/*.{js,ts,vue}",
+                "resources/views/**/*.blade.php"
+            ],
+            "group": "build",
+            "presentation": {
+                "echo": true,
+                "reveal": "always",
+                "focus": false,
+                "panel": "shared"
+            },
+            "problemMatcher": []
+        }
+    ]
+}

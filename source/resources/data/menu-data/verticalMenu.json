@@ -1,0 +1,249 @@
+{
+    "menu": [
+        {
+            "permission": "view dashboard",
+            "url": "dashboard",
+            "name": "Dashboard",
+            "icon": "house",
+            "slug": "dashboard"
+        },
+        {
+            "permission": "create students",
+            "url": "account-manager/students/create",
+            "name": "Add Student",
+            "icon": "user-plus",
+            "slug": "account_manager.students.create"
+        },
+        {
+            "permission": "update settings",
+            "name": "Site Resources",
+            "icon": "settings",
+            "slug": "settings",
+            "badgeClass": "badge rounded-pill badge-light-danger ms-auto me-1",
+            "submenu": [
+                {
+                    "permission": "site settings",
+                    "url": "settings/site",
+                    "name": "Site Settings",
+                    "icon": "circle",
+                    "slug": "settings.site.edit"
+                },
+                {
+                    "permission": "menu settings",
+                    "url": "settings/menu",
+                    "name": "Menu Settings",
+                    "icon": "circle",
+                    "slug": "settings.menu.edit"
+                },
+                {
+                    "permission": "featured images",
+                    "url": "settings/featured-images",
+                    "name": "Featured Images",
+                    "icon": "image",
+                    "slug": "settings.featured-images.edit"
+                }
+            ]
+        },
+        {
+            "permission": "manage users",
+            "name": "Roles & Users",
+            "icon": "users",
+            "slug": "user_management",
+            "badgeClass": "badge rounded-pill badge-light-danger ms-auto me-1",
+            "submenu": [
+                {
+                    "permission": "view roles",
+                    "url": "user-management/roles",
+                    "name": "Roles",
+                    "icon": "circle",
+                    "slug": "user_management.roles.index"
+                },
+                {
+                    "permission": "view users",
+                    "url": "user-management/users",
+                    "name": "Users",
+                    "icon": "circle",
+                    "slug": "user_management.users.index"
+                }
+            ]
+        },
+        {
+            "permission": "manage accounts",
+            "name": "Account Manager",
+            "icon": "key-round",
+            "slug": "account_manager",
+            "badgeClass": "badge rounded-pill badge-light-danger ms-auto me-1",
+            "submenu": [
+                {
+                    "permission": "view companies",
+                    "url": "account-manager/companies",
+                    "name": "Companies",
+                    "icon": "circle",
+                    "slug": "account_manager.companies.index"
+                },
+                {
+                    "permission": "view leaders",
+                    "url": "account-manager/leaders",
+                    "name": "Leaders",
+                    "icon": "circle",
+                    "slug": "account_manager.leaders.index"
+                },
+                {
+                    "permission": "view trainers",
+                    "url": "account-manager/trainers",
+                    "name": "Trainers",
+                    "icon": "circle",
+                    "slug": "account_manager.trainers.index"
+                },
+                {
+                    "permission": "view students",
+                    "url": "account-manager/students",
+                    "name": "Students",
+                    "icon": "circle",
+                    "slug": "account_manager.students.index"
+                }
+            ]
+        },
+        {
+            "permission": "manage lms",
+            "name": "LMS",
+            "icon": "book-open",
+            "slug": "lms",
+            "badgeClass": "badge rounded-pill badge-light-danger ms-auto me-1",
+            "submenu": [
+                {
+                    "permission": "manage lms",
+                    "url": "lms/courses",
+                    "name": "Courses",
+                    "icon": "book",
+                    "slug": "lms.courses.index"
+                },
+                {
+                    "permission": "manage lms",
+                    "url": "lms/lessons",
+                    "name": "Lessons",
+                    "icon": "align-left",
+                    "slug": "lms.lessons.index"
+                },
+                {
+                    "permission": "manage lms",
+                    "url": "lms/topics",
+                    "name": "Topics",
+                    "icon": "align-left",
+                    "slug": "lms.topics.index"
+                },
+                {
+                    "permission": "manage lms",
+                    "url": "lms/quizzes",
+                    "name": "Quizzes",
+                    "icon": "align-left",
+                    "slug": "lms.quizzes.index"
+                },
+                {
+                    "permission": "manage lms",
+                    "url": "lms/archived-courses",
+                    "name": "Archived Courses",
+                    "icon": "book",
+                    "slug": "lms.archived-courses.index"
+                }
+            ]
+        },
+        {
+            "permission": "view assessments",
+            "url": "assessments",
+            "name": "Assessments",
+            "icon": "bookmark",
+            "slug": "assessments"
+        },
+        {
+            "permission": "view competency",
+            "url": "competencies",
+            "name": "Competencies",
+            "icon": "award",
+            "slug": "competencies"
+        },
+        {
+            "permission": "view reports",
+            "name": "Reports",
+            "icon": "trello",
+            "slug": "reports",
+            "badgeClass": "badge rounded-pill badge-light-danger ms-auto me-1",
+            "submenu": [
+                {
+                    "permission": "view admin reports",
+                    "url": "reports/admins",
+                    "name": "Admin",
+                    "icon": "codesandbox",
+                    "slug": "reports.admins"
+                },
+                {
+                    "permission": "view enrolment reports",
+                    "url": "reports/enrolments",
+                    "name": "Enrolment",
+                    "icon": "codesandbox",
+                    "slug": "reports.enrolment"
+                },
+                {
+                    "permission": "view competency reports",
+                    "url": "reports/competencies",
+                    "name": "Unit Cross-Tab",
+                    "icon": "award",
+                    "slug": "reports.competency"
+                },
+                {
+                    "permission": "view work placement reports",
+                    "url": "reports/work-placements",
+                    "name": "Work Placements",
+                    "icon": "award",
+                    "slug": "reports.work-placements"
+                },
+                {
+                    "permission": "view competency reports",
+                    "url": "reports/commenced-units",
+                    "name": "Commenced Units",
+                    "icon": "award",
+                    "slug": "reports.commenced-units"
+                }
+            ]
+        },
+        {
+            "permission": "access admin tools",
+            "name": "Admin Tools",
+            "icon": "wrench",
+            "slug": "admin_tools",
+            "badgeClass": "badge rounded-pill badge-light-danger ms-auto me-1",
+            "submenu": [
+                {
+                    "permission": "access admin tools",
+                    "url": "admin-tools/sync-stats",
+                    "name": "Sync Stats",
+                    "icon": "circle",
+                    "slug": "admin_tools.sync_stats"
+                },
+                {
+                    "permission": "access admin tools",
+                    "url": "admin-tools/compare-stats",
+                    "name": "Compare Stats",
+                    "icon": "circle",
+                    "slug": "admin_tools.compare_stats"
+                }
+            ]
+        },
+        {
+            "permission": "create bulk notes",
+            "name": "Bulk Actions",
+            "icon": "wrench",
+            "slug": "bulk_actions",
+            "badgeClass": "badge rounded-pill badge-light-danger ms-auto me-1",
+            "submenu": [
+                {
+                    "permission": "create bulk notes",
+                    "url": "bulk-actions/bulk-notes",
+                    "name": "Create Bulk Notes",
+                    "icon": "wrench",
+                    "slug": "bulk_actions.bulknotes"
+                }
+            ]
+        }
+    ]
+}

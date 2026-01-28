@@ -1,0 +1,47 @@
+{
+    "course": 3,
+    "completed": false,
+    "at": null,
+    "lessons": {
+        "passed": 1,
+        "count": 3,
+        "submitted": 0,
+        "list": {
+            "__LESSON_ID__": {
+                "completed": true,
+                "submitted": false,
+                "at": null,
+                "completed_at": null,
+                "submitted_at": null,
+                "marked_at": 1749153376,
+                "lesson_end_at": 1749153376,
+                "previous": 0,
+                "topics": {
+                    "passed": 0,
+                    "count": 0,
+                    "submitted": 0,
+                    "list": [],
+                    "attempted": 0
+                },
+                "attempted": true,
+                "attempted_at": 1749153376,
+                "data": {
+                    "id": 7,
+                    "order": null,
+                    "slug": "adipisci-quisquam-nam-et-saepe-nisi-ipsa-in",
+                    "title": "Adipisci quisquam nam et saepe nisi ipsa in.",
+                    "release_key": "XDAYS",
+                    "release_value": "3",
+                    "has_work_placement": 0,
+                    "has_topic": 1,
+                    "course_id": 3,
+                    "created_at": "2025-06-03T20:59:35.000000Z",
+                    "updated_at": "2025-06-03T21:11:44.000000Z",
+                    "release_schedule": 3
+                }
+            }
+        },
+        "attempted": 1
+    },
+    "models_attached": true
+}

@@ -1,0 +1,28 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project version="4">
+  <component name="WebServers">
+    <option name="servers">
+      <webServer id="7f60efae-fc42-4918-ae9d-62d75df953fc" name="KEY-V2 LIVE" url="https://v2.keyinstitute.com.au/">
+        <fileTransfer rootFolder="/home/rdyeiay7wk0z/v2.keyinstitute.com.au" accessType="SFTP" host="ftp.keyinstitute.com.au" port="22" sshConfigId="f317de49-ee9f-4900-89cf-6ddc10164b17" sshConfig="rdyeiay7wk0z@ftp.keyinstitute.com.au:22 key" keyPair="true">
+          <advancedOptions>
+            <advancedOptions dataProtectionLevel="Private" keepAliveTimeout="0" passiveMode="true" shareSSLContext="true" />
+          </advancedOptions>
+        </fileTransfer>
+      </webServer>
+      <webServer id="d85569d5-6b40-483d-9dde-ef8a0b75e9d2" name="KEY-V2 DEV" url="https://dev.strive-recruitment.com/">
+        <fileTransfer rootFolder="/home/striverecruitmen/public_html/dev" accessType="SFTP" host="ftp.strive-recruitment.com" port="22" sshConfigId="6537bff7-738e-4ba1-b983-7bee998a3ee8" sshConfig="striverecruitmen@ftp.strive-recruitment.com:22 password">
+          <advancedOptions>
+            <advancedOptions dataProtectionLevel="Private" keepAliveTimeout="0" passiveMode="true" shareSSLContext="true" />
+          </advancedOptions>
+        </fileTransfer>
+      </webServer>
+      <webServer id="32c71507-7d83-48a0-91e3-25f027a5f102" name="KS-KEY V2" url="https://portal.knowledgespace.edu.au/">
+        <fileTransfer rootFolder="/home/knowledg/domains/portal/public_html" accessType="SFTP" host="ftp.knowledgespace.edu.au" port="22" sshConfigId="61d94b52-0557-4e4f-bf2a-61d326d5c487" sshConfig="knowledg@ftp.knowledgespace.edu.au:22 password">
+          <advancedOptions>
+            <advancedOptions dataProtectionLevel="Private" keepAliveTimeout="0" passiveMode="true" shareSSLContext="true" />
+          </advancedOptions>
+        </fileTransfer>
+      </webServer>
+    </option>
+  </component>
+</project>

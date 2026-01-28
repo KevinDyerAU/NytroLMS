@@ -1,0 +1,1 @@
+var Competency=Competency||{};window;
