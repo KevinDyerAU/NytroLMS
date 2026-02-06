@@ -1,62 +1,79 @@
 # KeyLMSNytro: Laravel Cloud Deployment Guide
 
-**Version:** 1.0
+**Version:** 2.0
 **Date:** January 29, 2026
 
-This document provides a comprehensive guide for deploying the KeyLMSNytro application to Laravel Cloud with a multi-environment setup (staging and production).
+This document provides a comprehensive guide for deploying the KeyLMSNytro application to **Laravel Cloud** using its native stack (MySQL, Redis) and integrating with AWS S3 for object storage. This follows the multi-environment setup for `staging` and `production`.
 
 ## 1. Prerequisites
 
-1.  **Laravel Cloud Account**: You must have an active Laravel Cloud account.
-2.  **GitHub Repository**: The KeyLMSNytro code should be in a GitHub repository that you have administrative access to.
-3.  **Repository Structure**: This guide assumes the Laravel application is in the `/source` subdirectory of the repository, as is the case with the current KeyLMSNytro setup.
+1.  **Laravel Cloud Account**: An active Laravel Cloud account with a payment method.
+2.  **GitHub Repository**: Administrative access to the `KevinDyerAU/KeyLMSNytro` GitHub repository.
+3.  **AWS S3 Bucket**: An AWS account with an S3 bucket created for file storage, along with an IAM user with programmatic access (Access Key ID and Secret Access Key).
 
 ## 2. Project Setup in Laravel Cloud
 
-1.  **Log in to Laravel Cloud**.
-2.  Click **Create Project**.
-3.  Select **GitHub** as the source control provider and authorize Laravel Cloud to access your repositories.
-4.  Choose the **`KevinDyerAU/KeyLMSNytro`** repository.
-5.  **Project Name**: Give your project a descriptive name (e.g., `KeyLMSNytro`).
-6.  **PHP Version**: Select **PHP 8.3**.
-7.  **Laravel Root Directory**: Set this to `/source`. This is a critical step.
-8.  Click **Create Project**.
+1.  **Log in to Laravel Cloud** and click **Create Project**.
+2.  **Connect to GitHub**: Authorize Laravel Cloud to access your GitHub repositories.
+3.  **Select Repository**: Choose the `KevinDyerAU/KeyLMSNytro` repository.
+4.  **Configure Project**:
+    *   **Project Name**: `KeyLMSNytro`
+    *   **PHP Version**: **PHP 8.3** (matches `composer.json`).
+    *   **Laravel Root Directory**: **`/source`**. This is a critical step because the Laravel application is in a subdirectory.
+5.  Click **Create Project**. Laravel Cloud will provision the project and a default `production` environment linked to the `main` branch.
 
-Laravel Cloud will now provision the necessary infrastructure for your project.
+## 3. Multi-Environment Configuration
 
-## 3. Multi-Environment & GitHub Configuration
+We will use two environments to ensure a safe deployment workflow.
 
-We will set up two environments: `production` and `staging`.
+*   **`production`**: Deploys from the `main` branch (created by default).
+*   **`staging`**: Deploys from the `develop` branch.
 
-*   **`production`**: Deploys from the `main` branch.
-*   **`staging`**: Deploys from the `develop` branch (or any other branch you designate for staging).
+### Create Staging Environment
 
-### 3.1. Production Environment
-
-By default, Laravel Cloud creates a `production` environment linked to the `main` branch. No changes are needed here.
-
-### 3.2. Staging Environment
-
-1.  In your project dashboard, go to the **Environments** tab.
+1.  In the project dashboard, go to the **Environments** tab.
 2.  Click **Create Environment**.
-3.  **Name**: Enter `staging`.
-4.  **Source Control Branch**: Select the `develop` branch (or your preferred staging branch).
+3.  **Name**: `staging`.
+4.  **Source Control Branch**: Select the `develop` branch.
 5.  Click **Create Environment**.
 
-Laravel Cloud will now create a completely separate environment for staging, with its own database, Redis cache, and domain.
+## 4. Resource Provisioning
 
-## 4. The `laravel-cloud.yml` File
+For each environment (`production` and `staging`), you need to provision and attach a database and a cache.
 
-Create a `laravel-cloud.yml` file in the `/source` directory of your repository. This file instructs Laravel Cloud on how to build and deploy your application.
+### 4.1. Create Database (MySQL)
+
+1.  Navigate to the environment's dashboard (e.g., `production`).
+2.  In the **Databases** card, click **Create**.
+3.  **Type**: Select `MySQL`.
+4.  **Name**: Give it a name (e.g., `keylms-prod-db`).
+5.  **Size**: Choose an appropriate size.
+6.  Click **Create Database**. The database will be created and automatically attached to the environment.
+7.  Repeat this process for the `staging` environment.
+
+### 4.2. Create Cache (Redis)
+
+1.  In the environment's dashboard, find the **Caches** card and click **Create**.
+2.  **Type**: Select `Redis`.
+3.  **Name**: Give it a name (e.g., `keylms-prod-cache`).
+4.  **Size**: Choose an appropriate size.
+5.  Click **Create Cache**. It will be automatically attached.
+6.  Repeat for the `staging` environment.
+
+## 5. The `laravel-cloud.yml` File
+
+This file tells Laravel Cloud how to build and deploy the application. Create it in the `/source` directory.
 
 **File**: `/source/laravel-cloud.yml`
 
 ```yaml
+# Build commands run in the /source directory
 build:
   - "composer install --no-interaction --prefer-dist --optimize-autoloader"
   - "npm install"
   - "npm run build"
 
+# Deploy commands run after the build is complete
 deploy:
   - "php artisan migrate --force"
   - "php artisan config:cache"
@@ -66,29 +83,32 @@ deploy:
 # Note: `php artisan storage:link` is handled automatically by Laravel Cloud.
 ```
 
-Commit and push this file to your repository.
+Commit and push this file to your `develop` and `main` branches.
 
-## 5. Environment Variables
+## 6. Environment Variables
 
-For each environment (`production` and `staging`), you must configure the necessary environment variables. Go to **Environments** -> **[Your Environment]** -> **Environment**.
+Configure these in **Environments** -> **[Your Environment]** -> **Environment**.
 
-### Key Variables for Both Environments
+### Variables for Both Environments
+
+These variables are essential for the application to run. Laravel Cloud injects `DB_*`, `REDIS_*`, and `CACHE_*` variables automatically when you attach resources.
 
 | Variable | Value | Notes |
 |---|---|---|
 | `APP_KEY` | (Generate with `php artisan key:generate`) | **Must be unique for each environment.** |
 | `APP_URL` | `https://your-cloud-domain.com` | Provided by Laravel Cloud. |
-| `DB_CONNECTION` | `mysql` | Managed by Laravel Cloud. |
-| `CACHE_DRIVER` | `redis` | Recommended for production/staging. |
-| `QUEUE_CONNECTION` | `redis` | Use Redis for reliable queue processing. |
-| `SESSION_DRIVER` | `redis` | Use Redis for scalable session handling. |
 | `REDIS_CLIENT` | `predis` | KeyLMSNytro uses the `predis/predis` package. |
-| `FILESYSTEM_DRIVER` | `s3` | **Highly Recommended**. Use S3 for user uploads. |
-| `AWS_ACCESS_KEY_ID` | (Your S3 Key) | Required if using S3. |
-| `AWS_SECRET_ACCESS_KEY` | (Your S3 Secret) | Required if using S3. |
-| `AWS_DEFAULT_REGION` | (Your S3 Region) | Required if using S3. |
-| `AWS_BUCKET` | (Your S3 Bucket Name) | Required if using S3. |
+| `FILESYSTEM_DRIVER` | `s3` | To use AWS S3 for file storage. |
+| `AWS_ACCESS_KEY_ID` | (Your S3 Key) | For S3 integration. |
+| `AWS_SECRET_ACCESS_KEY` | (Your S3 Secret) | For S3 integration. |
+| `AWS_DEFAULT_REGION` | (Your S3 Region) | For S3 integration. |
+| `AWS_BUCKET` | (Your S3 Bucket Name) | For S3 integration. |
 | `MAIL_MAILER` | `ses` or `smtp` | Configure your preferred mail service. |
+| `MAIL_HOST` | (Your mail host) | e.g., `smtp.mailgun.org` |
+| `MAIL_PORT` | (Your mail port) | e.g., `587` |
+| `MAIL_USERNAME` | (Your mail username) | | 
+| `MAIL_PASSWORD` | (Your mail password) | | 
+| `MAIL_ENCRYPTION` | `tls` | | 
 
 ### Environment-Specific Variables
 
@@ -98,40 +118,32 @@ For each environment (`production` and `staging`), you must configure the necess
 | `APP_DEBUG` | `true` | `false` |
 | `LOG_LEVEL` | `debug` | `error` |
 
-## 6. Startup Instructions (Post-Deployment)
+## 7. Startup Instructions (Post-Deployment)
 
-After your first successful deployment, you need to configure the scheduler and queue worker.
+After your first deployment, configure the scheduler and queue worker for each environment.
 
-### 6.1. Scheduler
+### 7.1. Scheduler
 
 1.  Go to **Environments** -> **[Your Environment]** -> **Scheduler**.
 2.  Click **Enable Scheduler**.
-3.  The default command `php artisan schedule:run` is correct. Laravel Cloud will run this every minute.
+3.  The default command `php artisan schedule:run` is correct.
 
-### 6.2. Queue Worker
+### 7.2. Queue Worker
 
 1.  Go to **Environments** -> **[Your Environment]** -> **Queues**.
 2.  Click **Create Worker**.
 3.  **Connection**: Select `redis`.
-4.  **Queue**: Enter `default` (or your specific queue names if you use them).
-5.  **Processes**: Start with `1` and adjust based on workload.
+4.  **Queue**: `default`.
+5.  **Processes**: Start with `1` and monitor.
 6.  **Daemon**: Ensure this is enabled.
 7.  Click **Create Worker**.
 
-## 7. Triggering Your First Deployment
+## 8. Deployment Workflow
 
-Once you have pushed the `laravel-cloud.yml` file and configured your environment variables, you can trigger your first deployment.
+With this setup, your deployment process is automated through Git:
 
-1.  Go to your project dashboard in Laravel Cloud.
-2.  Click **Deploy Now** for the environment you want to deploy.
+1.  **Develop**: Push new features to feature branches and open pull requests against `develop`.
+2.  **Test**: Merge pull requests into `develop`. This automatically triggers a deployment to the **`staging`** environment.
+3.  **Release**: After testing on staging, merge the `develop` branch into `main`. This automatically triggers a deployment to the **`production`** environment.
 
-Laravel Cloud will pull the latest code from the configured branch, execute the build and deploy steps, and make your application live.
-
-## 8. GitHub Settings & Workflow
-
-Your deployment workflow will now be based on your Git branching strategy:
-
-*   **Push to `develop`**: Automatically triggers a deployment to the **`staging`** environment.
-*   **Merge to `main`**: Automatically triggers a deployment to the **`production`** environment.
-
-This setup allows you to test all changes in a production-like staging environment before they are released to your users.
+This workflow ensures that all code is tested in a production-like environment before reaching your users.
