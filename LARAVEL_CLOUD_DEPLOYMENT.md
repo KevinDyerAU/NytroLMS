@@ -5,6 +5,8 @@
 
 This document provides a comprehensive guide for deploying the KeyLMSNytro application to **Laravel Cloud** using its native stack (MySQL, Redis) and integrating with AWS S3 for object storage. This follows the multi-environment setup for `staging` and `production`.
 
+**IMPORTANT**: This version reflects the updated repository structure where the Laravel application is at the **root directory**.
+
 ## 1. Prerequisites
 
 1.  **Laravel Cloud Account**: An active Laravel Cloud account with a payment method.
@@ -19,7 +21,7 @@ This document provides a comprehensive guide for deploying the KeyLMSNytro appli
 4.  **Configure Project**:
     *   **Project Name**: `KeyLMSNytro`
     *   **PHP Version**: **PHP 8.3** (matches `composer.json`).
-    *   **Laravel Root Directory**: **`/source`**. This is a critical step because the Laravel application is in a subdirectory.
+    *   **Laravel Root Directory**: **`/`**. The application is now at the root of the repository.
 5.  Click **Create Project**. Laravel Cloud will provision the project and a default `production` environment linked to the `main` branch.
 
 ## 3. Multi-Environment Configuration
@@ -62,9 +64,9 @@ For each environment (`production` and `staging`), you need to provision and att
 
 ## 5. The `laravel-cloud.yml` File
 
-This file tells Laravel Cloud how to build and deploy the application. Create it in the `/source` directory.
+This file tells Laravel Cloud how to build and deploy the application. Create it in the **root** directory.
 
-**File**: `/source/laravel-cloud.yml`
+**File**: `laravel-cloud.yml`
 
 ```yaml
 # Build commands run in the /source directory
@@ -96,25 +98,31 @@ These variables are essential for the application to run. Laravel Cloud injects 
 | Variable | Value | Notes |
 |---|---|---|
 | `APP_KEY` | (Generate with `php artisan key:generate`) | **Must be unique for each environment.** |
+| `APP_NAME` | `KeyLMSNytro` | |
 | `APP_URL` | `https://your-cloud-domain.com` | Provided by Laravel Cloud. |
-| `REDIS_CLIENT` | `predis` | KeyLMSNytro uses the `predis/predis` package. |
+| `REDIS_CLIENT` | `phpredis` | Recommended for performance. |
+| `SESSION_DRIVER` | `redis` | Use Redis for session storage. |
+| `QUEUE_CONNECTION` | `redis` | Use Redis for queue processing. |
 | `FILESYSTEM_DRIVER` | `s3` | To use AWS S3 for file storage. |
+| `BROADCAST_DRIVER` | `redis` | For real-time event broadcasting. |
 | `AWS_ACCESS_KEY_ID` | (Your S3 Key) | For S3 integration. |
 | `AWS_SECRET_ACCESS_KEY` | (Your S3 Secret) | For S3 integration. |
 | `AWS_DEFAULT_REGION` | (Your S3 Region) | For S3 integration. |
 | `AWS_BUCKET` | (Your S3 Bucket Name) | For S3 integration. |
-| `MAIL_MAILER` | `ses` or `smtp` | Configure your preferred mail service. |
-| `MAIL_HOST` | (Your mail host) | e.g., `smtp.mailgun.org` |
-| `MAIL_PORT` | (Your mail port) | e.g., `587` |
-| `MAIL_USERNAME` | (Your mail username) | | 
-| `MAIL_PASSWORD` | (Your mail password) | | 
-| `MAIL_ENCRYPTION` | `tls` | | 
+| `MAIL_MAILER` | `smtp` | Default mailer. |
+| `MAIL_HOST` | `mailhog` | For staging/testing. Use a real SMTP server for production. |
+| `MAIL_PORT` | `1025` | For Mailhog. |
+| `MAIL_USERNAME` | `null` | | 
+| `MAIL_PASSWORD` | `null` | | 
+| `MAIL_ENCRYPTION` | `null` | | 
 
 ### Environment-Specific Variables
 
 | Variable | `staging` Value | `production` Value |
 |---|---|---|
 | `APP_ENV` | `staging` | `production` |
+| `APP_DEBUG` | `true` | `false` |
+| `LOG_LEVEL` | `debug` | `error` |
 | `APP_DEBUG` | `true` | `false` |
 | `LOG_LEVEL` | `debug` | `error` |
 
