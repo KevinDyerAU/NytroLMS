@@ -8,10 +8,14 @@ import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { StatusBadge } from './StatusBadge';
-import { fetchCourseFullDetail, type CourseFullDetail as CourseFullDetailType } from '@/lib/api';
+import { AddLessonDialog } from './AddLessonDialog';
+import { EditLessonDialog } from './EditLessonDialog';
+import { fetchCourseFullDetail, deleteLesson, type CourseFullDetail as CourseFullDetailType } from '@/lib/api';
+import type { DbLesson } from '@/lib/types';
+import { toast } from 'sonner';
 import {
   ArrowLeft, Edit, BookOpen, Users, Clock, Calendar, Eye,
-  FileText, Layers, Loader2, Hash,
+  FileText, Layers, Loader2, Hash, Plus, Trash2, Pencil,
 } from 'lucide-react';
 
 interface CourseDetailProps {
@@ -24,6 +28,9 @@ export function CourseDetail({ courseId, onBack, onEdit }: CourseDetailProps) {
   const [course, setCourse] = useState<CourseFullDetailType | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [addLessonOpen, setAddLessonOpen] = useState(false);
+  const [editLesson, setEditLesson] = useState<(DbLesson & { topics_count: number }) | null>(null);
+  const [deletingLessonId, setDeletingLessonId] = useState<number | null>(null);
 
   const loadCourse = useCallback(async () => {
     setLoading(true);
@@ -185,12 +192,21 @@ export function CourseDetail({ courseId, onBack, onEdit }: CourseDetailProps) {
         {/* ── Lessons Tab ── */}
         <TabsContent value="lessons" className="mt-4">
           <Card>
-            <CardHeader>
+            <CardHeader className="flex flex-row items-center justify-between">
               <CardTitle className="text-base text-[#3b82f6]">Course Lessons</CardTitle>
+              <Button size="sm" className="bg-[#3b82f6] hover:bg-[#2563eb] text-white" onClick={() => setAddLessonOpen(true)}>
+                <Plus className="w-4 h-4 mr-1.5" /> Add Lesson
+              </Button>
             </CardHeader>
             <CardContent>
               {course.lessons.length === 0 ? (
-                <p className="text-sm text-[#94a3b8] text-center py-8">No lessons in this course</p>
+                <div className="text-center py-8">
+                  <Layers className="w-10 h-10 text-[#94a3b8] mx-auto mb-2" />
+                  <p className="text-sm text-[#94a3b8]">No lessons in this course</p>
+                  <Button size="sm" variant="outline" className="mt-3" onClick={() => setAddLessonOpen(true)}>
+                    <Plus className="w-4 h-4 mr-1.5" /> Add First Lesson
+                  </Button>
+                </div>
               ) : (
                 <div className="space-y-3">
                   {course.lessons.map((lesson, idx) => (
@@ -214,6 +230,40 @@ export function CourseDetail({ courseId, onBack, onEdit }: CourseDetailProps) {
                               Work Placement
                             </Badge>
                           )}
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            className="h-7 w-7 p-0 text-[#64748b] hover:text-[#3b82f6]"
+                            onClick={() => setEditLesson(lesson)}
+                          >
+                            <Pencil className="w-3.5 h-3.5" />
+                          </Button>
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            className="h-7 w-7 p-0 text-[#64748b] hover:text-red-500"
+                            disabled={deletingLessonId === lesson.id || lesson.topics_count > 0}
+                            title={lesson.topics_count > 0 ? 'Delete associated topics first' : 'Delete lesson'}
+                            onClick={async () => {
+                              if (!confirm(`Delete lesson "${lesson.title}"?`)) return;
+                              setDeletingLessonId(lesson.id);
+                              try {
+                                await deleteLesson(lesson.id);
+                                toast.success('Lesson deleted');
+                                loadCourse();
+                              } catch (err) {
+                                toast.error(err instanceof Error ? err.message : 'Failed to delete lesson');
+                              } finally {
+                                setDeletingLessonId(null);
+                              }
+                            }}
+                          >
+                            {deletingLessonId === lesson.id ? (
+                              <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                            ) : (
+                              <Trash2 className="w-3.5 h-3.5" />
+                            )}
+                          </Button>
                         </div>
                       </div>
                       <div className="flex gap-4 mt-2 text-xs text-[#94a3b8]">
@@ -272,6 +322,20 @@ export function CourseDetail({ courseId, onBack, onEdit }: CourseDetailProps) {
           </Card>
         </TabsContent>
       </Tabs>
+
+      {/* Lesson Dialogs */}
+      <AddLessonDialog
+        open={addLessonOpen}
+        onOpenChange={setAddLessonOpen}
+        courseId={courseId}
+        onSaved={loadCourse}
+      />
+      <EditLessonDialog
+        open={editLesson !== null}
+        onOpenChange={(open) => { if (!open) setEditLesson(null); }}
+        lesson={editLesson}
+        onSaved={loadCourse}
+      />
     </div>
   );
 }

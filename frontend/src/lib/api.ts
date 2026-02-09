@@ -140,10 +140,10 @@ export async function fetchStudents(params?: {
   }
 
   try {
-    // First get users
+    // Get users (no join — user_details fetched separately to avoid schema cache issues)
     let query = supabase
       .from('users')
-      .select('*, user_details(*)', { count: 'exact' })
+      .select('*', { count: 'exact' })
       .eq('is_archived', params?.status === 'archived' ? 1 : 0);
 
     if (params?.status === 'active') query = query.eq('is_active', 1);
@@ -162,16 +162,14 @@ export async function fetchStudents(params?: {
     const { data: users, error, count } = await query;
     if (error) throw error;
 
-    // Get roles for these users
     const userIds = (users ?? []).map(u => u.id);
-    const { data: roleData } = await supabase
-      .from('model_has_roles')
-      .select('model_id, role_id')
-      .in('model_id', userIds);
 
-    const { data: roles } = await supabase
-      .from('roles')
-      .select('id, name');
+    // Fetch roles and user_details in parallel
+    const [{ data: roleData }, { data: roles }, { data: details }] = await Promise.all([
+      supabase.from('model_has_roles').select('model_id, role_id').in('model_id', userIds.length > 0 ? userIds : [0]),
+      supabase.from('roles').select('id, name'),
+      supabase.from('user_details').select('*').in('user_id', userIds.length > 0 ? userIds : [0]),
+    ]);
 
     const roleMap = new Map<number, string>();
     (roles ?? []).forEach(r => roleMap.set(r.id, r.name));
@@ -181,10 +179,13 @@ export async function fetchStudents(params?: {
       userRoleMap.set(mr.model_id, roleMap.get(mr.role_id) ?? 'Student');
     });
 
+    const detailsMap = new Map<number, DbUserDetail>();
+    (details ?? []).forEach((d: any) => detailsMap.set(d.user_id, d));
+
     const enriched: UserWithDetails[] = (users ?? []).map(u => ({
       ...u,
       role_name: (userRoleMap.get(u.id) ?? 'Student') as UserRole,
-      user_details: Array.isArray(u.user_details) ? u.user_details[0] ?? null : u.user_details,
+      user_details: detailsMap.get(u.id) ?? null,
     }));
 
     // Filter by role if specified
@@ -209,19 +210,14 @@ export async function fetchUserById(id: number): Promise<UserWithDetails | null>
   }
 
   try {
-    const { data: user, error } = await supabase
-      .from('users')
-      .select('*, user_details(*)')
-      .eq('id', id)
-      .single();
+    // Fetch user and details separately to avoid schema cache relationship issues
+    const [{ data: user, error }, { data: detail }, { data: roleData }] = await Promise.all([
+      supabase.from('users').select('*').eq('id', id).single(),
+      supabase.from('user_details').select('*').eq('user_id', id).maybeSingle(),
+      supabase.from('model_has_roles').select('role_id').eq('model_id', id).limit(1),
+    ]);
     if (error) throw error;
     if (!user) return null;
-
-    const { data: roleData } = await supabase
-      .from('model_has_roles')
-      .select('role_id')
-      .eq('model_id', id)
-      .limit(1);
 
     let roleName: UserRole = 'Student';
     if (roleData && roleData.length > 0) {
@@ -236,7 +232,7 @@ export async function fetchUserById(id: number): Promise<UserWithDetails | null>
     return {
       ...user,
       role_name: roleName,
-      user_details: Array.isArray(user.user_details) ? user.user_details[0] ?? null : user.user_details,
+      user_details: detail ?? null,
     };
   } catch (e) {
     handleError(e, 'Failed to fetch user');
@@ -1139,6 +1135,127 @@ export async function updateCourse(courseId: number, data: {
     }
   } catch (e) {
     handleError(e, 'Failed to update course');
+  }
+}
+
+// ─── Lessons ─────────────────────────────────────────────────────────────────
+
+export async function createLesson(data: {
+  title: string;
+  course_id: number;
+  release_key: string;
+  release_value?: string | null;
+  has_work_placement?: number;
+  lb_content?: string | null;
+}): Promise<{ id: number }> {
+  assertConfigured();
+  try {
+    if (useEdgeFunctions) {
+      const result = await callEdgeFunction<{ id: number }>('courses', {
+        method: 'POST',
+        path: `${data.course_id}/lessons`,
+        body: data,
+      });
+      return result;
+    }
+
+    const slug = data.title.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)/g, '');
+    // Get current lesson count for ordering
+    const { count } = await supabase
+      .from('lessons')
+      .select('id', { count: 'exact', head: true })
+      .eq('course_id', data.course_id);
+    const order = count ?? 0;
+    const now = new Date().toISOString();
+
+    const { data: newLesson, error } = await supabase
+      .from('lessons')
+      .insert({
+        title: data.title,
+        slug,
+        course_id: data.course_id,
+        order,
+        release_key: data.release_key || 'IMMEDIATELY',
+        release_value: data.release_value || null,
+        has_work_placement: data.has_work_placement ?? 0,
+        has_topic: false,
+        lb_content: data.lb_content || null,
+        created_at: now,
+        updated_at: now,
+      })
+      .select('id')
+      .single();
+    if (error) throw error;
+    return { id: newLesson.id };
+  } catch (e) {
+    handleError(e, 'Failed to create lesson');
+  }
+}
+
+export async function updateLesson(lessonId: number, data: {
+  title?: string;
+  release_key?: string;
+  release_value?: string | null;
+  has_work_placement?: number;
+  lb_content?: string | null;
+  course_id?: number;
+}): Promise<void> {
+  assertConfigured();
+  try {
+    if (useEdgeFunctions) {
+      await callEdgeFunction('courses', {
+        method: 'PUT',
+        path: `lessons/${lessonId}`,
+        body: data,
+      });
+      return;
+    }
+
+    const fields: Record<string, unknown> = {};
+    if (data.title !== undefined) {
+      fields.title = data.title;
+      fields.slug = data.title.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)/g, '');
+    }
+    if (data.release_key !== undefined) fields.release_key = data.release_key;
+    if (data.release_value !== undefined) fields.release_value = data.release_value;
+    if (data.has_work_placement !== undefined) fields.has_work_placement = data.has_work_placement;
+    if (data.lb_content !== undefined) fields.lb_content = data.lb_content;
+    if (data.course_id !== undefined) fields.course_id = data.course_id;
+    fields.updated_at = new Date().toISOString();
+
+    if (Object.keys(fields).length > 1) {
+      const { error } = await supabase.from('lessons').update(fields).eq('id', lessonId);
+      if (error) throw error;
+    }
+  } catch (e) {
+    handleError(e, 'Failed to update lesson');
+  }
+}
+
+export async function deleteLesson(lessonId: number): Promise<void> {
+  assertConfigured();
+  try {
+    if (useEdgeFunctions) {
+      await callEdgeFunction('courses', {
+        method: 'DELETE',
+        path: `lessons/${lessonId}`,
+      });
+      return;
+    }
+
+    // Check for associated topics
+    const { count } = await supabase
+      .from('topics')
+      .select('id', { count: 'exact', head: true })
+      .eq('lesson_id', lessonId);
+    if (count && count > 0) {
+      throw new Error('Delete associated topics first.');
+    }
+
+    const { error } = await supabase.from('lessons').delete().eq('id', lessonId);
+    if (error) throw error;
+  } catch (e) {
+    handleError(e, 'Failed to delete lesson');
   }
 }
 
