@@ -21,6 +21,7 @@ import {
   FileText,
   Menu,
   X,
+  User,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
@@ -132,7 +133,9 @@ export function Sidebar() {
               </span>
             </div>
             <div className="min-w-0">
-              <p className="text-sm font-medium text-[#1e293b] truncate">{user.name}</p>
+              <Link to="/profile" className="text-sm font-medium text-[#1e293b] truncate hover:text-[#3b82f6] transition-colors">
+                {user.name}
+              </Link>
               <p className="text-xs text-[#94a3b8] truncate capitalize">{user.role}</p>
             </div>
           </div>

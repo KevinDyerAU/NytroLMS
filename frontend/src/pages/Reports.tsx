@@ -4,6 +4,7 @@
  */
 import React, { useState } from 'react';
 import { DashboardLayout } from '../components/DashboardLayout';
+import { ReportDetailDialog } from '../components/ReportDetailDialog';
 import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -77,6 +78,7 @@ export default function Reports() {
   const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState('all');
   const [page, setPage] = useState(0);
+  const [selectedReportId, setSelectedReportId] = useState<number | null>(null);
   const limit = 25;
 
   const { data: reportData, loading: reportsLoading, error: reportsError, refetch: refetchReports } = useSupabaseQuery(
@@ -218,7 +220,7 @@ export default function Reports() {
                               {report.updated_at ? new Date(report.updated_at).toLocaleDateString('en-AU') : '—'}
                             </td>
                             <td className="px-4 py-3 text-right">
-                              <Button variant="ghost" size="sm" className="text-[#64748b] hover:text-[#3b82f6]" onClick={() => toast('Report detail coming soon')}>
+                              <Button variant="ghost" size="sm" className="text-[#64748b] hover:text-[#3b82f6]" onClick={() => setSelectedReportId(report.id)}>
                                 <Eye className="w-4 h-4" />
                               </Button>
                             </td>
@@ -295,6 +297,14 @@ export default function Reports() {
           </TabsContent>
         </Tabs>
       </div>
+
+      {selectedReportId !== null && (
+        <ReportDetailDialog
+          open={true}
+          onOpenChange={(open) => { if (!open) setSelectedReportId(null); }}
+          reportId={selectedReportId}
+        />
+      )}
     </DashboardLayout>
   );
 }

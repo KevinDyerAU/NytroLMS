@@ -6,6 +6,7 @@ import { useState } from 'react';
 import { DashboardLayout } from '../components/DashboardLayout';
 import { DataTable } from '../components/DataTable';
 import { StatusBadge } from '../components/StatusBadge';
+import { AssessmentDetailDialog } from '../components/AssessmentDetailDialog';
 import { useSupabaseQuery } from '@/hooks/useSupabaseQuery';
 import { fetchAssessments, type AssessmentSummary } from '@/lib/api';
 import { Button } from '@/components/ui/button';
@@ -16,6 +17,7 @@ import { toast } from 'sonner';
 export default function Assessments() {
   const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState('all');
+  const [selectedAttemptId, setSelectedAttemptId] = useState<number | null>(null);
 
   const { data, loading, error, refetch } = useSupabaseQuery(
     () => fetchAssessments({ search, status: statusFilter, limit: 100 }),
@@ -105,12 +107,20 @@ export default function Assessments() {
             </Button>
           }
           actions={(row: AssessmentSummary) => (
-            <Button variant="ghost" size="sm" className="text-[#64748b] hover:text-[#3b82f6]" onClick={() => toast(`Viewing assessment #${row.id}`)}>
+            <Button variant="ghost" size="sm" className="text-[#64748b] hover:text-[#3b82f6]" onClick={() => setSelectedAttemptId(row.id)}>
               <Eye className="w-4 h-4" />
             </Button>
           )}
         />
       </div>
+
+      {selectedAttemptId !== null && (
+        <AssessmentDetailDialog
+          open={true}
+          onOpenChange={(open) => { if (!open) setSelectedAttemptId(null); }}
+          attemptId={selectedAttemptId}
+        />
+      )}
     </DashboardLayout>
   );
 }

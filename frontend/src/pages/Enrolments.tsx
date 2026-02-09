@@ -4,6 +4,7 @@
  */
 import React, { useState, useMemo } from 'react';
 import { DashboardLayout } from '../components/DashboardLayout';
+import { EnrolmentDetailDialog } from '../components/EnrolmentDetailDialog';
 import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -27,6 +28,7 @@ export default function Enrolments() {
   const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState('all');
   const [page, setPage] = useState(0);
+  const [selectedEnrolmentId, setSelectedEnrolmentId] = useState<number | null>(null);
   const limit = 25;
 
   const { data, loading, error, refetch } = useSupabaseQuery(
@@ -137,7 +139,7 @@ export default function Enrolments() {
                           </Badge>
                         </td>
                         <td className="px-4 py-3 text-right">
-                          <Button variant="ghost" size="sm" className="text-[#64748b] hover:text-[#3b82f6]" onClick={() => toast('Enrolment details coming soon')}>
+                          <Button variant="ghost" size="sm" className="text-[#64748b] hover:text-[#3b82f6]" onClick={() => setSelectedEnrolmentId(enrolment.id)}>
                             <Eye className="w-4 h-4" />
                           </Button>
                         </td>
@@ -162,6 +164,14 @@ export default function Enrolments() {
           </Card>
         )}
       </div>
+
+      {selectedEnrolmentId !== null && (
+        <EnrolmentDetailDialog
+          open={true}
+          onOpenChange={(open) => { if (!open) setSelectedEnrolmentId(null); }}
+          enrolmentId={selectedEnrolmentId}
+        />
+      )}
     </DashboardLayout>
   );
 }

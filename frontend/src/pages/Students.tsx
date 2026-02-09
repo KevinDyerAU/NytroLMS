@@ -6,6 +6,9 @@ import { useState, useMemo } from 'react';
 import { DashboardLayout } from '../components/DashboardLayout';
 import { DataTable } from '../components/DataTable';
 import { StatusBadge } from '../components/StatusBadge';
+import { StudentDetail } from '../components/StudentDetail';
+import { AddStudentDialog } from '../components/AddStudentDialog';
+import { EditStudentDialog } from '../components/EditStudentDialog';
 import { useSupabaseQuery } from '@/hooks/useSupabaseQuery';
 import { fetchStudents, type UserWithDetails } from '@/lib/api';
 import { Button } from '@/components/ui/button';
@@ -17,6 +20,9 @@ export default function Students() {
   const [search, setSearch] = useState('');
   const [roleFilter, setRoleFilter] = useState('all');
   const [statusFilter, setStatusFilter] = useState<'active' | 'inactive' | 'archived'>('active');
+  const [selectedStudentId, setSelectedStudentId] = useState<number | null>(null);
+  const [addDialogOpen, setAddDialogOpen] = useState(false);
+  const [editStudentId, setEditStudentId] = useState<number | null>(null);
 
   const { data, loading, error, refetch } = useSupabaseQuery(
     () => fetchStudents({ search, status: statusFilter, limit: 200 }),
@@ -28,6 +34,19 @@ export default function Students() {
     if (roleFilter === 'all') return data.data;
     return data.data.filter(u => u.role_name === roleFilter);
   }, [data, roleFilter]);
+
+  // If a student is selected, show the detail view
+  if (selectedStudentId !== null) {
+    return (
+      <DashboardLayout title="Students" subtitle="Manage student records and enrolments">
+        <StudentDetail
+          studentId={selectedStudentId}
+          onBack={() => setSelectedStudentId(null)}
+          onEdit={(id) => setEditStudentId(id)}
+        />
+      </DashboardLayout>
+    );
+  }
 
   const columns = [
     {
@@ -138,18 +157,44 @@ export default function Students() {
               <Button variant="outline" size="sm" className="border-slate-200 text-slate-600" onClick={() => toast('Export coming soon')}>
                 <Download className="w-4 h-4 mr-1.5" /> Export
               </Button>
-              <Button size="sm" className="bg-[#3b82f6] hover:bg-[#2563eb] text-white" onClick={() => toast('Add student coming soon')}>
+              <Button size="sm" className="bg-[#3b82f6] hover:bg-[#2563eb] text-white" onClick={() => setAddDialogOpen(true)}>
                 <Plus className="w-4 h-4 mr-1.5" /> Add Student
               </Button>
             </div>
           }
           actions={(row: UserWithDetails) => (
-            <Button variant="ghost" size="sm" className="text-[#64748b] hover:text-[#3b82f6]" onClick={() => toast(`Viewing ${row.first_name} ${row.last_name}`)}>
+            <Button variant="ghost" size="sm" className="text-[#64748b] hover:text-[#3b82f6]" onClick={() => setSelectedStudentId(row.id)}>
               <Eye className="w-4 h-4" />
             </Button>
           )}
         />
       </div>
+
+      <AddStudentDialog
+        open={addDialogOpen}
+        onOpenChange={setAddDialogOpen}
+        onCreated={(id) => {
+          refetch();
+          setSelectedStudentId(id);
+        }}
+      />
+
+      {editStudentId !== null && (
+        <EditStudentDialog
+          open={true}
+          onOpenChange={(open) => { if (!open) setEditStudentId(null); }}
+          studentId={editStudentId}
+          onSaved={() => {
+            setEditStudentId(null);
+            refetch();
+            // Re-open detail view to see changes
+            if (selectedStudentId === editStudentId) {
+              setSelectedStudentId(null);
+              setTimeout(() => setSelectedStudentId(editStudentId), 50);
+            }
+          }}
+        />
+      )}
     </DashboardLayout>
   );
 }

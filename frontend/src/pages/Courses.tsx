@@ -5,6 +5,7 @@
 import { useState } from 'react';
 import { DashboardLayout } from '../components/DashboardLayout';
 import { StatusBadge } from '../components/StatusBadge';
+import { CourseDetail } from '../components/CourseDetail';
 import { useSupabaseQuery } from '@/hooks/useSupabaseQuery';
 import { fetchCourses, type CourseWithDetails } from '@/lib/api';
 import { Card } from '@/components/ui/card';
@@ -23,6 +24,7 @@ export default function Courses() {
   const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState('all');
   const [viewMode, setViewMode] = useState<'grid' | 'list'>('grid');
+  const [selectedCourseId, setSelectedCourseId] = useState<number | null>(null);
 
   const { data, loading, error, refetch } = useSupabaseQuery(
     () => fetchCourses({ search, status: statusFilter, limit: 100 }),
@@ -30,6 +32,18 @@ export default function Courses() {
   );
 
   const courses = data?.data ?? [];
+
+  if (selectedCourseId !== null) {
+    return (
+      <DashboardLayout title="Courses" subtitle="Manage training courses and qualifications">
+        <CourseDetail
+          courseId={selectedCourseId}
+          onBack={() => setSelectedCourseId(null)}
+          onEdit={(id) => toast(`Edit course #${id} coming soon`)}
+        />
+      </DashboardLayout>
+    );
+  }
 
   return (
     <DashboardLayout title="Courses" subtitle="Manage training courses and qualifications">
@@ -112,7 +126,7 @@ export default function Courses() {
                 <Card
                   key={course.id}
                   className="p-5 border-[#e2e8f0]/50 shadow-card hover:shadow-md transition-shadow group cursor-pointer"
-                  onClick={() => toast(`Course: ${course.title}`)}
+                  onClick={() => setSelectedCourseId(course.id)}
                 >
                   <div className="flex items-start justify-between mb-3">
                     <div className="p-2 rounded-lg bg-[#eff6ff]">
@@ -171,7 +185,7 @@ export default function Courses() {
                       <tr
                         key={course.id}
                         className="hover:bg-[#f8fafc] transition-colors cursor-pointer"
-                        onClick={() => toast(`Course: ${course.title}`)}
+                        onClick={() => setSelectedCourseId(course.id)}
                       >
                         <td className="px-4 py-3">
                           <p className="text-sm font-medium text-[#1e293b]">{course.title}</p>

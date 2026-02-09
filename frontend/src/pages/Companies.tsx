@@ -4,6 +4,7 @@
  */
 import React, { useState } from 'react';
 import { DashboardLayout } from '../components/DashboardLayout';
+import { CompanyDetail } from '../components/CompanyDetail';
 import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -15,6 +16,7 @@ import { fetchCompanies, CompanyWithCounts } from '@/lib/api';
 
 export default function Companies() {
   const [search, setSearch] = useState('');
+  const [selectedCompanyId, setSelectedCompanyId] = useState<number | null>(null);
 
   const { data, loading, error, refetch } = useSupabaseQuery(
     () => fetchCompanies({ search, limit: 50 }),
@@ -22,6 +24,18 @@ export default function Companies() {
   );
 
   const companies = data?.data ?? [];
+
+  if (selectedCompanyId !== null) {
+    return (
+      <DashboardLayout title="Companies" subtitle="Manage employer and company relationships">
+        <CompanyDetail
+          companyId={selectedCompanyId}
+          onBack={() => setSelectedCompanyId(null)}
+          onEdit={(id) => toast(`Edit company #${id} coming soon`)}
+        />
+      </DashboardLayout>
+    );
+  }
 
   return (
     <DashboardLayout title="Companies" subtitle="Manage employer and company relationships">
@@ -76,7 +90,7 @@ export default function Companies() {
                   <Card
                     key={company.id}
                     className="p-5 border-[#e2e8f0]/50 shadow-card hover:shadow-md transition-shadow cursor-pointer"
-                    onClick={() => toast('Company details coming soon')}
+                    onClick={() => setSelectedCompanyId(company.id)}
                   >
                     <div className="flex items-start justify-between mb-3">
                       <div className="p-2 rounded-lg bg-[#eff6ff]">

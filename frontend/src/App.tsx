@@ -19,6 +19,7 @@ import Companies from "./pages/Companies";
 import Reports from "./pages/Reports";
 import UserManagement from "./pages/UserManagement";
 import Settings from "./pages/Settings";
+import Profile from "./pages/Profile";
 import ResetPassword from "./pages/ResetPassword";
 
 function AppRoutes() {
@@ -53,6 +54,7 @@ function AppRoutes() {
       <Route path="/reports" element={<ProtectedRoute><Reports /></ProtectedRoute>} />
       <Route path="/user-management" element={<ProtectedRoute><UserManagement /></ProtectedRoute>} />
       <Route path="/settings" element={<ProtectedRoute><Settings /></ProtectedRoute>} />
+      <Route path="/profile" element={<ProtectedRoute><Profile /></ProtectedRoute>} />
 
       {/* Password reset route */}
       <Route path="/reset-password" element={<ResetPassword />} />

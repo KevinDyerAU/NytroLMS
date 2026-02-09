@@ -4,13 +4,16 @@
  */
 import React, { useState } from 'react';
 import { DashboardLayout } from '../components/DashboardLayout';
+import { StudentDetail } from '../components/StudentDetail';
+import { EditStudentDialog } from '../components/EditStudentDialog';
+import { AddStudentDialog } from '../components/AddStudentDialog';
 import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { Search, Plus, UserCog, Shield, Edit, Trash2, Loader2, AlertCircle } from 'lucide-react';
+import { Search, Plus, UserCog, Shield, Edit, Trash2, Eye, Loader2, AlertCircle } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { toast } from 'sonner';
 import { useSupabaseQuery } from '@/hooks/useSupabaseQuery';
@@ -31,6 +34,9 @@ export default function UserManagement() {
   const [roleFilter, setRoleFilter] = useState('all');
   const [statusFilter, setStatusFilter] = useState<'active' | 'inactive' | 'archived'>('active');
   const [page, setPage] = useState(0);
+  const [selectedUserId, setSelectedUserId] = useState<number | null>(null);
+  const [editUserId, setEditUserId] = useState<number | null>(null);
+  const [addDialogOpen, setAddDialogOpen] = useState(false);
   const limit = 25;
 
   const { data: usersData, loading: usersLoading, error: usersError, refetch: refetchUsers } = useSupabaseQuery(
@@ -52,6 +58,31 @@ export default function UserManagement() {
   const total = usersData?.total ?? 0;
   const roles = rolesData ?? [];
   const distribution = roleDistribution ?? [];
+
+  if (selectedUserId !== null) {
+    return (
+      <DashboardLayout title="User Management" subtitle="Manage users, roles, and permissions">
+        <StudentDetail
+          studentId={selectedUserId}
+          onBack={() => setSelectedUserId(null)}
+          onEdit={(id) => setEditUserId(id)}
+        />
+        {editUserId !== null && (
+          <EditStudentDialog
+            open={true}
+            onOpenChange={(open) => { if (!open) setEditUserId(null); }}
+            studentId={editUserId}
+            onSaved={() => {
+              setEditUserId(null);
+              setSelectedUserId(null);
+              setTimeout(() => setSelectedUserId(editUserId), 50);
+              refetchUsers();
+            }}
+          />
+        )}
+      </DashboardLayout>
+    );
+  }
 
   return (
     <DashboardLayout title="User Management" subtitle="Manage users, roles, and permissions">
@@ -101,7 +132,7 @@ export default function UserManagement() {
                   </SelectContent>
                 </Select>
               </div>
-              <Button size="sm" className="bg-[#3b82f6] hover:bg-[#2563eb] text-white" onClick={() => toast('Add user coming soon')}>
+              <Button size="sm" className="bg-[#3b82f6] hover:bg-[#2563eb] text-white" onClick={() => setAddDialogOpen(true)}>
                 <Plus className="w-4 h-4 mr-1.5" /> Add User
               </Button>
             </div>
@@ -172,11 +203,11 @@ export default function UserManagement() {
                             </td>
                             <td className="px-4 py-3 text-right">
                               <div className="flex items-center justify-end gap-1">
-                                <Button variant="ghost" size="sm" className="text-[#64748b] hover:text-[#3b82f6] h-8 w-8 p-0" onClick={() => toast('Edit user coming soon')}>
-                                  <Edit className="w-4 h-4" />
+                                <Button variant="ghost" size="sm" className="text-[#64748b] hover:text-[#3b82f6] h-8 w-8 p-0" onClick={() => setSelectedUserId(user.id)}>
+                                  <Eye className="w-4 h-4" />
                                 </Button>
-                                <Button variant="ghost" size="sm" className="text-[#64748b] hover:text-[#ef4444] h-8 w-8 p-0" onClick={() => toast('Archive user coming soon')}>
-                                  <Trash2 className="w-4 h-4" />
+                                <Button variant="ghost" size="sm" className="text-[#64748b] hover:text-[#3b82f6] h-8 w-8 p-0" onClick={() => setEditUserId(user.id)}>
+                                  <Edit className="w-4 h-4" />
                                 </Button>
                               </div>
                             </td>
@@ -242,6 +273,24 @@ export default function UserManagement() {
           </TabsContent>
         </Tabs>
       </div>
+
+      <AddStudentDialog
+        open={addDialogOpen}
+        onOpenChange={setAddDialogOpen}
+        onCreated={() => refetchUsers()}
+      />
+
+      {editUserId !== null && selectedUserId === null && (
+        <EditStudentDialog
+          open={true}
+          onOpenChange={(open) => { if (!open) setEditUserId(null); }}
+          studentId={editUserId}
+          onSaved={() => {
+            setEditUserId(null);
+            refetchUsers();
+          }}
+        />
+      )}
     </DashboardLayout>
   );
 }
