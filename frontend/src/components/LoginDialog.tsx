@@ -35,6 +35,9 @@ export function LoginDialog({ open, onOpenChange }: LoginDialogProps) {
   const [lastNameError, setLastNameError] = useState('');
   const [shakeError, setShakeError] = useState(false);
 
+  const [loginAttempts, setLoginAttempts] = useState(0);
+  const MAX_LOGIN_ATTEMPTS = 3;
+
   const resetForm = () => {
     setEmail('');
     setPassword('');
@@ -84,21 +87,29 @@ export function LoginDialog({ open, onOpenChange }: LoginDialogProps) {
 
     const result = await login(email, password);
     if (result.success) {
+      setLoginAttempts(0); // Reset attempts on success
       toast.success('Welcome back!');
       resetForm();
       onOpenChange(false);
       navigate('/dashboard');
     } else {
-      const errorMsg = result.error || 'Login failed. Please try again.';
-      showError(errorMsg);
-      // Clear password on auth failure
+      const newAttempts = loginAttempts + 1;
+      setLoginAttempts(newAttempts);
+      
+      let errorMsg = result.error || 'Login failed. Please try again.';
       if (errorMsg.toLowerCase().includes('invalid')) {
+        errorMsg = `Incorrect password. Attempt ${newAttempts} of ${MAX_LOGIN_ATTEMPTS}.`;
+        if (newAttempts >= MAX_LOGIN_ATTEMPTS) {
+          errorMsg = 'Too many failed attempts. Please reset your password.';
+        }
         setPassword('');
         setPasswordError('Incorrect password');
       }
-      if (errorMsg.toLowerCase().includes('not configured')) {
+      if (errorMsg.toLowerCase().includes('not configured') || errorMsg.toLowerCase().includes('user not found')) {
+        errorMsg = 'Account not found. Please check your email.';
         setEmailError('Account not found');
       }
+      showError(errorMsg);
     }
   };
 
@@ -138,6 +149,7 @@ export function LoginDialog({ open, onOpenChange }: LoginDialogProps) {
     if (!isOpen) {
       resetForm();
       setView('login');
+      setLoginAttempts(0); // Reset attempts counter on close
     }
     onOpenChange(isOpen);
   };
@@ -244,6 +256,23 @@ export function LoginDialog({ open, onOpenChange }: LoginDialogProps) {
                   </span>
                 ) : 'Sign In'}
               </Button>
+
+              {/* Reset Password button after 3 failed attempts */}
+              {loginAttempts >= MAX_LOGIN_ATTEMPTS && (
+                <div className="space-y-3 pt-2">
+                  <div className="h-px bg-[#e2e8f0]" />
+                  <Button
+                    type="button"
+                    onClick={() => switchView('forgot')}
+                    className="w-full bg-red-50 hover:bg-red-100 text-red-600 border border-red-200 font-semibold py-2.5 h-auto rounded-lg"
+                  >
+                    Reset Password
+                  </Button>
+                  <p className="text-center text-xs text-red-500">
+                    Too many failed attempts. Reset your password to continue.
+                  </p>
+                </div>
+              )}
 
               <p className="text-center text-sm text-[#64748b]">
                 Don't have an account?{' '}
