@@ -1614,6 +1614,39 @@ export async function fetchQuizAttemptDetail(attemptId: number): Promise<DbQuizA
   }
 }
 
+// ─── Generic Report Builder ───────────────────────────────────────────────────
+
+export interface ReportFilters {
+  startDate?: string;
+  endDate?: string;
+  status?: string;
+  courseId?: number;
+  companyId?: number;
+  role?: string;
+}
+
+export interface GeneratedReport {
+  reportType: string;
+  generatedAt: string;
+  generatedBy: string;
+  recordCount: number;
+  filters: ReportFilters;
+  data: Record<string, unknown>[];
+}
+
+export async function buildReport(reportType: string, filters?: ReportFilters): Promise<GeneratedReport> {
+  assertConfigured();
+  try {
+    const { data, error } = await supabase.functions.invoke('reports/build', {
+      body: { reportType, filters: filters || {} },
+    });
+    if (error) throw error;
+    return data as GeneratedReport;
+  } catch (e) {
+    handleError(e, 'Failed to generate report');
+  }
+}
+
 // ─── Reports ─────────────────────────────────────────────────────────────────
 
 export async function fetchAdminReports(params?: {

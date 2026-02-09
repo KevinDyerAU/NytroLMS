@@ -13,6 +13,7 @@ import { Button } from '@/components/ui/button';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Download, Eye } from 'lucide-react';
 import { toast } from 'sonner';
+import { exportToCSV } from '@/lib/utils';
 
 export default function Assessments() {
   const [search, setSearch] = useState('');
@@ -102,7 +103,33 @@ export default function Assessments() {
             </Select>
           }
           headerActions={
-            <Button variant="outline" size="sm" className="border-slate-200 text-slate-600" onClick={() => toast('Export coming soon')}>
+            <Button variant="outline" size="sm" className="border-slate-200 text-slate-600" onClick={() => {
+              const items = data?.data ?? [];
+              if (items.length === 0) {
+                toast.error('No data to export');
+                return;
+              }
+              exportToCSV(
+                items.map(a => ({
+                  id: a.id,
+                  student_name: a.student_name,
+                  course_title: a.course_title,
+                  type: a.type,
+                  status: a.status,
+                  created_at: a.created_at,
+                })),
+                `assessments-${new Date().toISOString().split('T')[0]}.csv`,
+                [
+                  { key: 'id', label: 'ID' },
+                  { key: 'student_name', label: 'Student' },
+                  { key: 'course_title', label: 'Course' },
+                  { key: 'type', label: 'Type' },
+                  { key: 'status', label: 'Status' },
+                  { key: 'created_at', label: 'Submitted At' },
+                ]
+              );
+              toast.success('Assessments exported to CSV');
+            }}>
               <Download className="w-4 h-4 mr-1.5" /> Export
             </Button>
           }

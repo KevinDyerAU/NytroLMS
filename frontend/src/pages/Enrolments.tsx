@@ -14,6 +14,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Search, Plus, Download, Eye, Loader2, AlertCircle } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { toast } from 'sonner';
+import { exportToCSV } from '@/lib/utils';
 import { useSupabaseQuery } from '@/hooks/useSupabaseQuery';
 import { fetchEnrolments, EnrolmentWithDetails } from '@/lib/api';
 
@@ -71,7 +72,37 @@ export default function Enrolments() {
             </Select>
           </div>
           <div className="flex items-center gap-2">
-            <Button variant="outline" size="sm" className="border-[#e2e8f0] text-[#64748b]" onClick={() => toast('Export coming soon')}>
+            <Button variant="outline" size="sm" className="border-[#e2e8f0] text-[#64748b]" onClick={() => {
+              const items = data?.data ?? [];
+              if (items.length === 0) {
+                toast.error('No data to export');
+                return;
+              }
+              exportToCSV(
+                items.map(e => ({
+                  id: e.id,
+                  student_name: e.student_name,
+                  student_email: e.student_email,
+                  course_title: e.course_title,
+                  status: e.status,
+                  course_start_at: e.course_start_at,
+                  course_ends_at: e.course_ends_at,
+                  created_at: e.created_at,
+                })),
+                `enrolments-${new Date().toISOString().split('T')[0]}.csv`,
+                [
+                  { key: 'id', label: 'ID' },
+                  { key: 'student_name', label: 'Student Name' },
+                  { key: 'student_email', label: 'Student Email' },
+                  { key: 'course_title', label: 'Course' },
+                  { key: 'status', label: 'Status' },
+                  { key: 'course_start_at', label: 'Start Date' },
+                  { key: 'course_ends_at', label: 'End Date' },
+                  { key: 'created_at', label: 'Enrolled At' },
+                ]
+              );
+              toast.success('Enrolments exported to CSV');
+            }}>
               <Download className="w-4 h-4 mr-1.5" /> Export
             </Button>
             <Button size="sm" className="bg-[#3b82f6] hover:bg-[#2563eb] text-white" onClick={() => setAddDialogOpen(true)}>

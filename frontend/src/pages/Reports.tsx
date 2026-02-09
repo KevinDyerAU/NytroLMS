@@ -5,6 +5,7 @@
 import React, { useState } from 'react';
 import { DashboardLayout } from '../components/DashboardLayout';
 import { ReportDetailDialog } from '../components/ReportDetailDialog';
+import { ReportBuilderDialog } from '../components/ReportBuilderDialog';
 import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -17,6 +18,7 @@ import {
   Search, Loader2, AlertCircle, Eye,
 } from 'lucide-react';
 import { toast } from 'sonner';
+import { exportToCSV } from '@/lib/utils';
 import { useSupabaseQuery } from '@/hooks/useSupabaseQuery';
 import { fetchAdminReports, fetchCourseProgressSummary, CourseProgressSummary } from '@/lib/api';
 import type { DbAdminReport } from '@/lib/types';
@@ -79,6 +81,7 @@ export default function Reports() {
   const [statusFilter, setStatusFilter] = useState('all');
   const [page, setPage] = useState(0);
   const [selectedReportId, setSelectedReportId] = useState<number | null>(null);
+  const [reportBuilderOpen, setReportBuilderOpen] = useState(false);
   const limit = 25;
 
   const { data: reportData, loading: reportsLoading, error: reportsError, refetch: refetchReports } = useSupabaseQuery(
@@ -122,7 +125,7 @@ export default function Reports() {
                       <div
                         key={report.name}
                         className="flex items-center justify-between p-3 rounded-lg border border-[#e2e8f0] hover:border-[#3b82f6] hover:bg-[#f8fafc] transition-all cursor-pointer group"
-                        onClick={() => toast('Report generation coming soon')}
+                        onClick={() => setReportBuilderOpen(true)}
                       >
                         <div>
                           <p className="text-sm font-medium text-[#1e293b] group-hover:text-[#3b82f6] transition-colors">{report.name}</p>
@@ -163,7 +166,32 @@ export default function Reports() {
                   </SelectContent>
                 </Select>
               </div>
-              <Button variant="outline" size="sm" className="border-[#e2e8f0] text-[#64748b]" onClick={() => toast('Export coming soon')}>
+              <Button variant="outline" size="sm" className="border-[#e2e8f0] text-[#64748b]" onClick={() => {
+                if (reports.length === 0) {
+                  toast.error('No data to export');
+                  return;
+                }
+                exportToCSV(
+                  reports.map(r => ({
+                    id: r.id,
+                    student_id: r.student_id,
+                    course_id: r.course_id,
+                    student_status: r.student_status,
+                    created_at: r.created_at,
+                    updated_at: r.updated_at,
+                  })),
+                  `admin-reports-${new Date().toISOString().split('T')[0]}.csv`,
+                  [
+                    { key: 'id', label: 'ID' },
+                    { key: 'student_id', label: 'Student ID' },
+                    { key: 'course_id', label: 'Course ID' },
+                    { key: 'student_status', label: 'Status' },
+                    { key: 'created_at', label: 'Created At' },
+                    { key: 'updated_at', label: 'Updated At' },
+                  ]
+                );
+                toast.success('Reports exported to CSV');
+              }}>
                 <Download className="w-4 h-4 mr-1.5" /> Export
               </Button>
             </div>
@@ -297,6 +325,11 @@ export default function Reports() {
           </TabsContent>
         </Tabs>
       </div>
+
+      <ReportBuilderDialog
+        open={reportBuilderOpen}
+        onOpenChange={setReportBuilderOpen}
+      />
 
       {selectedReportId !== null && (
         <ReportDetailDialog

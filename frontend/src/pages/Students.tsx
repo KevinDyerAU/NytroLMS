@@ -15,6 +15,7 @@ import { Button } from '@/components/ui/button';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Plus, Download, Eye } from 'lucide-react';
 import { toast } from 'sonner';
+import { exportToCSV } from '@/lib/utils';
 
 export default function Students() {
   const [search, setSearch] = useState('');
@@ -154,7 +155,38 @@ export default function Students() {
           }
           headerActions={
             <div className="flex items-center gap-2">
-              <Button variant="outline" size="sm" className="border-slate-200 text-slate-600" onClick={() => toast('Export coming soon')}>
+              <Button variant="outline" size="sm" className="border-slate-200 text-slate-600" onClick={() => {
+                if (!filteredData || filteredData.length === 0) {
+                  toast.error('No data to export');
+                  return;
+                }
+                exportToCSV(
+                  filteredData.map(s => ({
+                    id: s.id,
+                    first_name: s.first_name,
+                    last_name: s.last_name,
+                    email: s.email,
+                    role: s.role_name,
+                    status: s.user_details?.status ?? (s.is_active ? 'Active' : 'Inactive'),
+                    phone: s.user_details?.phone ?? '',
+                    address: s.user_details?.address ?? '',
+                    created_at: s.created_at,
+                  })),
+                  `students-${new Date().toISOString().split('T')[0]}.csv`,
+                  [
+                    { key: 'id', label: 'ID' },
+                    { key: 'first_name', label: 'First Name' },
+                    { key: 'last_name', label: 'Last Name' },
+                    { key: 'email', label: 'Email' },
+                    { key: 'role', label: 'Role' },
+                    { key: 'status', label: 'Status' },
+                    { key: 'phone', label: 'Phone' },
+                    { key: 'address', label: 'Address' },
+                    { key: 'created_at', label: 'Created At' },
+                  ]
+                );
+                toast.success('Students exported to CSV');
+              }}>
                 <Download className="w-4 h-4 mr-1.5" /> Export
               </Button>
               <Button size="sm" className="bg-[#3b82f6] hover:bg-[#2563eb] text-white" onClick={() => setAddDialogOpen(true)}>

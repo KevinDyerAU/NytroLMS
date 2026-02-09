@@ -7,6 +7,7 @@ import { DashboardLayout } from '../components/DashboardLayout';
 import { StudentDetail } from '../components/StudentDetail';
 import { EditStudentDialog } from '../components/EditStudentDialog';
 import { AddStudentDialog } from '../components/AddStudentDialog';
+import { AddRoleDialog } from '../components/AddRoleDialog';
 import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -37,6 +38,7 @@ export default function UserManagement() {
   const [selectedUserId, setSelectedUserId] = useState<number | null>(null);
   const [editUserId, setEditUserId] = useState<number | null>(null);
   const [addDialogOpen, setAddDialogOpen] = useState(false);
+  const [addRoleDialogOpen, setAddRoleDialogOpen] = useState(false);
   const limit = 25;
 
   const { data: usersData, loading: usersLoading, error: usersError, refetch: refetchUsers } = useSupabaseQuery(
@@ -49,7 +51,7 @@ export default function UserManagement() {
     []
   );
 
-  const { data: roleDistribution, loading: distLoading } = useSupabaseQuery(
+  const { data: roleDistribution, loading: distLoading, refetch: refetchDistribution } = useSupabaseQuery(
     () => fetchUserRoleDistribution(),
     []
   );
@@ -234,7 +236,7 @@ export default function UserManagement() {
           <TabsContent value="roles" className="mt-4 space-y-4">
             <div className="flex items-center justify-between">
               <p className="text-sm text-[#64748b]">Manage roles and their associated permissions</p>
-              <Button size="sm" className="bg-[#3b82f6] hover:bg-[#2563eb] text-white" onClick={() => toast('Add role coming soon')}>
+              <Button size="sm" className="bg-[#3b82f6] hover:bg-[#2563eb] text-white" onClick={() => setAddRoleDialogOpen(true)}>
                 <Plus className="w-4 h-4 mr-1.5" /> Add Role
               </Button>
             </div>
@@ -273,6 +275,12 @@ export default function UserManagement() {
           </TabsContent>
         </Tabs>
       </div>
+
+      <AddRoleDialog
+        open={addRoleDialogOpen}
+        onOpenChange={setAddRoleDialogOpen}
+        onSaved={() => refetchDistribution()}
+      />
 
       <AddStudentDialog
         open={addDialogOpen}

@@ -142,6 +142,9 @@ Deno.serve(async (req: Request) => {
     // PUT /reports/settings
     if (req.method === 'PUT' && path === 'settings') return handleUpdateSettings(req, user);
 
+    // POST /reports/build (generic report builder)
+    if (req.method === 'POST' && path === 'build') return handleBuildReport(req, user);
+
     return errorResponse(404, 'Not found');
   });
 });
@@ -344,4 +347,299 @@ async function handleUpdateSettings(req: Request, user: AuthUser): Promise<Respo
   if (error) return errorResponse(500, 'Failed to update settings: ' + error.message);
 
   return jsonResponse({ message: 'Settings updated successfully', updated: entries.length });
+}
+
+// ─── Generic Report Builder ─────────────────────────────────────────────────
+
+interface ReportFilters {
+  startDate?: string;
+  endDate?: string;
+  status?: string;
+  courseId?: number;
+  companyId?: number;
+  role?: string;
+}
+
+async function handleBuildReport(req: Request, user: AuthUser): Promise<Response> {
+  const roleCheck = requireRole(user, ['Root', 'Admin', 'Moderator', 'Mini Admin', 'Leader', 'Trainer']);
+  if (roleCheck) return roleCheck;
+
+  const body = await req.json();
+  const { reportType, filters = {} }: { reportType: string; filters: ReportFilters } = body;
+
+  if (!reportType) {
+    return errorResponse(400, 'Report type is required');
+  }
+
+  const adminClient = getAdminClient();
+
+  try {
+    let data: any[] = [];
+    const generatedAt = new Date().toISOString();
+
+    switch (reportType) {
+      case 'daily-enrolment':
+        data = await buildDailyEnrolmentReport(adminClient, filters);
+        break;
+      case 'enrolment-summary':
+        data = await buildEnrolmentSummaryReport(adminClient, filters);
+        break;
+      case 'active-students':
+        data = await buildActiveStudentsReport(adminClient, filters);
+        break;
+      case 'disengaged-students':
+        data = await buildDisengagedStudentsReport(adminClient, filters);
+        break;
+      case 'student-progress':
+        data = await buildStudentProgressReport(adminClient, filters);
+        break;
+      case 'pending-assessments':
+        data = await buildPendingAssessmentsReport(adminClient, filters);
+        break;
+      case 'competency-report':
+        data = await buildCompetencyReport(adminClient, filters);
+        break;
+      case 'assessment-analytics':
+        data = await buildAssessmentAnalyticsReport(adminClient, filters);
+        break;
+      case 'company-summary':
+        data = await buildCompanySummaryReport(adminClient, filters);
+        break;
+      case 'work-placements':
+        data = await buildWorkPlacementsReport(adminClient, filters);
+        break;
+      default:
+        return errorResponse(400, `Unknown report type: ${reportType}`);
+    }
+
+    return jsonResponse({
+      reportType,
+      generatedAt,
+      generatedBy: user.email,
+      recordCount: data.length,
+      filters,
+      data,
+    });
+  } catch (err) {
+    console.error('Report generation error:', err);
+    return errorResponse(500, 'Failed to generate report: ' + (err instanceof Error ? err.message : 'Unknown error'));
+  }
+}
+
+// ─── Report Builder Functions ─────────────────────────────────────────────────
+
+async function buildDailyEnrolmentReport(adminClient: SupabaseClient, filters: ReportFilters): Promise<any[]> {
+  const today = new Date().toISOString().split('T')[0];
+  const startOfDay = filters.startDate || `${today}T00:00:00`;
+  const endOfDay = filters.endDate || `${today}T23:59:59`;
+
+  const { data: enrolments } = await adminClient
+    .from('student_course_enrolments')
+    .select('*, users!inner(first_name, last_name, email), courses!inner(title)')
+    .gte('created_at', startOfDay)
+    .lte('created_at', endOfDay)
+    .order('created_at', { ascending: false });
+
+  return (enrolments || []).map((e: any) => ({
+    enrolment_id: e.id,
+    student_name: `${e.users.first_name} ${e.users.last_name}`,
+    student_email: e.users.email,
+    course_title: e.courses.title,
+    status: e.status,
+    enrolled_at: e.created_at,
+  }));
+}
+
+async function buildEnrolmentSummaryReport(adminClient: SupabaseClient, filters: ReportFilters): Promise<any[]> {
+  let query = adminClient.from('student_course_enrolments').select('*');
+  if (filters.status) query = query.eq('status', filters.status);
+  if (filters.startDate) query = query.gte('created_at', filters.startDate);
+  if (filters.endDate) query = query.lte('created_at', filters.endDate);
+
+  const { data: enrolments } = await query;
+
+  const summary = new Map<string, { count: number; courses: Set<number> }>();
+  (enrolments || []).forEach((e: any) => {
+    const status = e.status || 'Unknown';
+    const existing = summary.get(status) || { count: 0, courses: new Set() };
+    existing.count++;
+    existing.courses.add(e.course_id);
+    summary.set(status, existing);
+  });
+
+  return Array.from(summary.entries()).map(([status, info]) => ({
+    status,
+    total_enrolments: info.count,
+    unique_courses: info.courses.size,
+  }));
+}
+
+async function buildActiveStudentsReport(adminClient: SupabaseClient, filters: ReportFilters): Promise<any[]> {
+  const { data: students } = await adminClient
+    .from('users')
+    .select('id, first_name, last_name, email, is_active, created_at, user_details(last_logged_in)')
+    .eq('is_active', 1)
+    .eq('is_archived', 0)
+    .order('created_at', { ascending: false });
+
+  return (students || []).map((s: any) => ({
+    student_id: s.id,
+    name: `${s.first_name} ${s.last_name}`,
+    email: s.email,
+    last_login: s.user_details?.last_logged_in || null,
+    account_created: s.created_at,
+  }));
+}
+
+async function buildDisengagedStudentsReport(adminClient: SupabaseClient, filters: ReportFilters): Promise<any[]> {
+  // Students with no login in last 30 days or low progress
+  const thirtyDaysAgo = new Date();
+  thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
+
+  const { data: students } = await adminClient
+    .from('users')
+    .select('id, first_name, last_name, email, user_details(last_logged_in), student_course_enrolments!inner(status, course_progress(percentage))')
+    .eq('is_active', 1)
+    .eq('is_archived', 0);
+
+  return (students || []).filter((s: any) => {
+    const lastLogin = s.user_details?.last_logged_in;
+    return !lastLogin || new Date(lastLogin) < thirtyDaysAgo;
+  }).map((s: any) => {
+    const enrolments = s.student_course_enrolments || [];
+    const avgProgress = enrolments.length > 0
+      ? enrolments.reduce((sum: number, e: any) => sum + (parseFloat(e.course_progress?.percentage) || 0), 0) / enrolments.length
+      : 0;
+
+    return {
+      student_id: s.id,
+      name: `${s.first_name} ${s.last_name}`,
+      email: s.email,
+      last_login: s.user_details?.last_logged_in || null,
+      active_enrolments: enrolments.filter((e: any) => e.status === 'ACTIVE').length,
+      avg_progress: Math.round(avgProgress),
+    };
+  });
+}
+
+async function buildStudentProgressReport(adminClient: SupabaseClient, filters: ReportFilters): Promise<any[]> {
+  const { data: enrolments } = await adminClient
+    .from('student_course_enrolments')
+    .select('*, users!inner(first_name, last_name, email), courses!inner(title), course_progress!inner(percentage)')
+    .eq('status', 'ACTIVE');
+
+  return (enrolments || []).map((e: any) => ({
+    student_id: e.user_id,
+    student_name: `${e.users.first_name} ${e.users.last_name}`,
+    student_email: e.users.email,
+    course_title: e.courses.title,
+    progress_percentage: parseFloat(e.course_progress?.percentage) || 0,
+    course_start: e.course_start_at,
+    course_end: e.course_ends_at,
+  }));
+}
+
+async function buildPendingAssessmentsReport(adminClient: SupabaseClient, filters: ReportFilters): Promise<any[]> {
+  const { data: attempts } = await adminClient
+    .from('quiz_attempts')
+    .select('*, users!inner(first_name, last_name, email), courses!inner(title)')
+    .in('status', ['SUBMITTED', 'REVIEWING'])
+    .order('created_at', { ascending: false });
+
+  return (attempts || []).map((a: any) => ({
+    attempt_id: a.id,
+    student_name: `${a.users.first_name} ${a.users.last_name}`,
+    student_email: a.users.email,
+    course_title: a.courses.title,
+    status: a.status,
+    submitted_at: a.created_at,
+    score: a.score,
+  }));
+}
+
+async function buildCompetencyReport(adminClient: SupabaseClient, filters: ReportFilters): Promise<any[]> {
+  const { data: attempts } = await adminClient
+    .from('quiz_attempts')
+    .select('*, users!inner(first_name, last_name), courses!inner(title)')
+    .in('status', ['PASSED', 'FAILED'])
+    .order('created_at', { ascending: false });
+
+  const competencyMap = new Map<string, { passed: number; failed: number; total: number }>();
+
+  (attempts || []).forEach((a: any) => {
+    const key = `${a.users.first_name} ${a.users.last_name} - ${a.courses.title}`;
+    const existing = competencyMap.get(key) || { passed: 0, failed: 0, total: 0 };
+    existing.total++;
+    if (a.status === 'PASSED') existing.passed++;
+    else existing.failed++;
+    competencyMap.set(key, existing);
+  });
+
+  return Array.from(competencyMap.entries()).map(([student_course, stats]) => ({
+    student_course,
+    total_attempts: stats.total,
+    passed: stats.passed,
+    failed: stats.failed,
+    pass_rate: Math.round((stats.passed / stats.total) * 100),
+  }));
+}
+
+async function buildAssessmentAnalyticsReport(adminClient: SupabaseClient, filters: ReportFilters): Promise<any[]> {
+  const { data: attempts } = await adminClient
+    .from('quiz_attempts')
+    .select('status, created_at');
+
+  if (!attempts || attempts.length === 0) return [];
+
+  const statusCounts = new Map<string, number>();
+  const dailyCounts = new Map<string, { submitted: number; passed: number; failed: number }>();
+
+  attempts.forEach((a: any) => {
+    statusCounts.set(a.status, (statusCounts.get(a.status) || 0) + 1);
+
+    const date = a.created_at?.split('T')[0] || 'Unknown';
+    const existing = dailyCounts.get(date) || { submitted: 0, passed: 0, failed: 0 };
+    existing.submitted++;
+    if (a.status === 'PASSED') existing.passed++;
+    if (a.status === 'FAILED') existing.failed++;
+    dailyCounts.set(date, existing);
+  });
+
+  return Array.from(dailyCounts.entries()).map(([date, counts]) => ({
+    date,
+    ...counts,
+  })).sort((a: any, b: any) => new Date(b.date).getTime() - new Date(a.date).getTime());
+}
+
+async function buildCompanySummaryReport(adminClient: SupabaseClient, filters: ReportFilters): Promise<any[]> {
+  const { data: companies } = await adminClient
+    .from('companies')
+    .select('id, name, email, created_at, user_has_attachables!inner(user_id)')
+    .is('deleted_at', null);
+
+  return (companies || []).map((c: any) => ({
+    company_id: c.id,
+    name: c.name,
+    email: c.email,
+    linked_users: c.user_has_attachables?.length || 0,
+    created_at: c.created_at,
+  }));
+}
+
+async function buildWorkPlacementsReport(adminClient: SupabaseClient, filters: ReportFilters): Promise<any[]> {
+  // Work placements tracked via enrolments with company associations
+  const { data: enrolments } = await adminClient
+    .from('student_course_enrolments')
+    .select('*, users!inner(first_name, last_name, email), courses!inner(title)')
+    .eq('is_chargeable', 1);
+
+  return (enrolments || []).map((e: any) => ({
+    enrolment_id: e.id,
+    student_name: `${e.users.first_name} ${e.users.last_name}`,
+    student_email: e.users.email,
+    course_title: e.courses.title,
+    status: e.status,
+    start_date: e.course_start_at,
+    end_date: e.course_ends_at,
+  }));
 }
