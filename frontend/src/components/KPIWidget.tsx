@@ -1,8 +1,9 @@
 /**
  * KPIWidget - Dashboard metric card matching NytroAI design
- * White card with icon, value, label, and optional trend indicator
+ * White card with icon, value, label, and optional trend/subtitle
  */
 import React from 'react';
+import { Link } from 'react-router-dom';
 import { cn } from '@/lib/utils';
 import { TrendingUp, TrendingDown } from 'lucide-react';
 
@@ -11,7 +12,9 @@ interface KPIWidgetProps {
   value: string | number;
   icon: React.ElementType;
   trend?: { value: number; label: string };
-  color?: 'blue' | 'teal' | 'amber' | 'red' | 'green';
+  subtitle?: string;
+  color?: 'blue' | 'teal' | 'amber' | 'red' | 'green' | 'purple' | 'orange';
+  link?: string;
 }
 
 const colorMap = {
@@ -20,13 +23,15 @@ const colorMap = {
   amber: { bg: 'bg-[#fffbeb]', icon: 'text-[#f59e0b]' },
   red: { bg: 'bg-[#fef2f2]', icon: 'text-[#ef4444]' },
   green: { bg: 'bg-[#f0fdf4]', icon: 'text-[#22c55e]' },
+  purple: { bg: 'bg-[#f5f3ff]', icon: 'text-[#8b5cf6]' },
+  orange: { bg: 'bg-[#fff7ed]', icon: 'text-[#f97316]' },
 };
 
-export function KPIWidget({ label, value, icon: Icon, trend, color = 'blue' }: KPIWidgetProps) {
+export function KPIWidget({ label, value, icon: Icon, trend, subtitle, color = 'blue', link }: KPIWidgetProps) {
   const colors = colorMap[color];
 
-  return (
-    <div className="bg-white rounded-xl p-5 shadow-card border border-[#e2e8f0]/50 hover:shadow-md transition-shadow duration-200">
+  const content = (
+    <div className="bg-white rounded-xl p-5 shadow-card border border-[#e2e8f0]/50 hover:shadow-md transition-shadow duration-200 h-full">
       <div className="flex items-start justify-between">
         <div className="space-y-2">
           <p className="text-sm font-medium text-[#64748b]">{label}</p>
@@ -47,6 +52,9 @@ export function KPIWidget({ label, value, icon: Icon, trend, color = 'blue' }: K
               <span className="text-xs text-[#94a3b8]">{trend.label}</span>
             </div>
           )}
+          {subtitle && !trend && (
+            <p className="text-xs text-[#94a3b8]">{subtitle}</p>
+          )}
         </div>
         <div className={cn("p-2.5 rounded-lg", colors.bg)}>
           <Icon className={cn("w-5 h-5", colors.icon)} />
@@ -54,4 +62,9 @@ export function KPIWidget({ label, value, icon: Icon, trend, color = 'blue' }: K
       </div>
     </div>
   );
+
+  if (link) {
+    return <Link to={link} className="block">{content}</Link>;
+  }
+  return content;
 }

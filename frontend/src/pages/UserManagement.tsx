@@ -233,7 +233,7 @@ export default function UserManagement() {
           </TabsContent>
 
           {/* Roles Tab */}
-          <TabsContent value="roles" className="mt-4 space-y-4">
+          <TabsContent value="roles" className="mt-4 space-y-6">
             <div className="flex items-center justify-between">
               <p className="text-sm text-[#64748b]">Manage roles and their associated permissions</p>
               <Button size="sm" className="bg-[#3b82f6] hover:bg-[#2563eb] text-white" onClick={() => setAddRoleDialogOpen(true)}>
@@ -241,36 +241,104 @@ export default function UserManagement() {
               </Button>
             </div>
 
+            {/* Role summary cards */}
             {distLoading ? (
               <Card className="p-12 flex items-center justify-center border-[#e2e8f0]/50">
                 <Loader2 className="w-6 h-6 animate-spin text-[#3b82f6]" />
                 <span className="ml-3 text-sm text-[#64748b]">Loading roles...</span>
               </Card>
             ) : (
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                {distribution.map((role) => (
-                  <Card key={role.role} className="p-5 border-[#e2e8f0]/50 shadow-card hover:shadow-md transition-shadow">
-                    <div className="flex items-start justify-between mb-2">
-                      <div className="flex items-center gap-2">
-                        <Shield className="w-4 h-4 text-[#3b82f6]" />
-                        <h3 className="font-heading font-semibold text-[#1e293b]">{role.role}</h3>
-                      </div>
-                      <Badge variant="outline" className="text-xs bg-[#f1f5f9] text-[#64748b] border-[#e2e8f0]">
-                        {role.count} users
+              <>
+                <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-7 gap-3">
+                  {distribution.map((role) => (
+                    <Card key={role.role} className="p-3 border-[#e2e8f0]/50 shadow-card text-center">
+                      <Badge variant="outline" className={cn("text-xs font-medium mb-1", roleColors[role.role] ?? roleColors.Student)}>
+                        {role.role}
                       </Badge>
-                    </div>
-                    <p className="text-sm text-[#64748b]">
-                      {role.role === 'Root' && 'Full system access — superadmin privileges'}
-                      {role.role === 'Admin' && 'Manage students, courses, assessments, and reports'}
-                      {role.role === 'Mini Admin' && 'Limited admin access to assigned areas'}
-                      {role.role === 'Leader' && 'Company leader — manage company students and enrolments'}
-                      {role.role === 'Trainer' && 'View students, manage assessments, mark submissions'}
-                      {role.role === 'Student' && 'View courses, submit assessments, track progress'}
-                      {role.role === 'Moderator' && 'Content moderation and quality assurance'}
-                    </p>
-                  </Card>
-                ))}
-              </div>
+                      <p className="text-lg font-bold text-[#1e293b]">{role.count}</p>
+                      <p className="text-[10px] text-[#94a3b8]">users</p>
+                    </Card>
+                  ))}
+                </div>
+
+                {/* Permission Matrix */}
+                <Card className="overflow-hidden border-[#e2e8f0]/50 shadow-card">
+                  <div className="px-5 py-3 border-b border-[#e2e8f0] bg-[#f8fafc]">
+                    <h3 className="text-sm font-semibold text-[#1e293b]">Permission Matrix</h3>
+                    <p className="text-xs text-[#94a3b8] mt-0.5">Role capabilities across system features</p>
+                  </div>
+                  <div className="overflow-x-auto">
+                    <table className="w-full text-xs">
+                      <thead>
+                        <tr className="border-b border-[#e2e8f0] bg-[#fafbfc]">
+                          <th className="text-left px-4 py-2.5 font-semibold text-[#64748b] uppercase tracking-wider min-w-[140px]">Feature</th>
+                          {['Admin', 'Trainer', 'Leader', 'Student'].map(role => (
+                            <th key={role} className="text-center px-3 py-2.5 font-semibold text-[#64748b] uppercase tracking-wider min-w-[80px]">
+                              {role}
+                            </th>
+                          ))}
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-[#f1f5f9]">
+                        {[
+                          { feature: 'Learners', admin: 'full', trainer: 'view', leader: 'assigned', student: 'own' },
+                          { feature: 'Enrolments', admin: 'full', trainer: 'view', leader: 'assigned', student: 'own' },
+                          { feature: 'Courses', admin: 'full', trainer: 'view', leader: 'none', student: 'enrolled' },
+                          { feature: 'Assessments', admin: 'full', trainer: 'full', leader: 'view', student: 'submit' },
+                          { feature: 'Reports', admin: 'full', trainer: 'view', leader: 'assigned', student: 'own' },
+                          { feature: 'Companies', admin: 'full', trainer: 'none', leader: 'own', student: 'none' },
+                          { feature: 'User Management', admin: 'full', trainer: 'none', leader: 'none', student: 'none' },
+                          { feature: 'Settings', admin: 'full', trainer: 'none', leader: 'none', student: 'profile' },
+                          { feature: 'Quality Checks', admin: 'full', trainer: 'approve', leader: 'none', student: 'none' },
+                        ].map(row => (
+                          <tr key={row.feature} className="hover:bg-[#f8fafc]">
+                            <td className="px-4 py-2.5 font-medium text-[#1e293b]">{row.feature}</td>
+                            {(['admin', 'trainer', 'leader', 'student'] as const).map(role => {
+                              const level = row[role];
+                              return (
+                                <td key={role} className="text-center px-3 py-2.5">
+                                  <span className={cn(
+                                    "inline-flex items-center px-2 py-0.5 rounded text-[10px] font-medium",
+                                    level === 'full' ? 'bg-emerald-50 text-emerald-600' :
+                                    level === 'view' ? 'bg-blue-50 text-blue-600' :
+                                    level === 'assigned' ? 'bg-amber-50 text-amber-600' :
+                                    level === 'own' || level === 'enrolled' || level === 'submit' || level === 'approve' || level === 'profile' ? 'bg-purple-50 text-purple-600' :
+                                    'bg-slate-50 text-slate-400'
+                                  )}>
+                                    {level === 'full' ? 'Full' :
+                                     level === 'view' ? 'View' :
+                                     level === 'assigned' ? 'Assigned' :
+                                     level === 'own' ? 'Own' :
+                                     level === 'enrolled' ? 'Enrolled' :
+                                     level === 'submit' ? 'Submit' :
+                                     level === 'approve' ? 'Approve' :
+                                     level === 'profile' ? 'Profile' :
+                                     'None'}
+                                  </span>
+                                </td>
+                              );
+                            })}
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                  <div className="px-5 py-2.5 border-t border-[#e2e8f0] bg-[#f8fafc] flex items-center gap-4 flex-wrap">
+                    <span className="text-[10px] text-[#94a3b8] font-medium">Legend:</span>
+                    {[
+                      { label: 'Full', color: 'bg-emerald-50 text-emerald-600' },
+                      { label: 'View', color: 'bg-blue-50 text-blue-600' },
+                      { label: 'Assigned', color: 'bg-amber-50 text-amber-600' },
+                      { label: 'Limited', color: 'bg-purple-50 text-purple-600' },
+                      { label: 'None', color: 'bg-slate-50 text-slate-400' },
+                    ].map(item => (
+                      <span key={item.label} className={cn("inline-flex items-center px-2 py-0.5 rounded text-[10px] font-medium", item.color)}>
+                        {item.label}
+                      </span>
+                    ))}
+                  </div>
+                </Card>
+              </>
             )}
           </TabsContent>
         </Tabs>

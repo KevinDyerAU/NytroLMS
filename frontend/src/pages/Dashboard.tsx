@@ -1,21 +1,21 @@
 /**
- * Dashboard Page — NytroAI-style dashboard with real Supabase data.
- * KPI widgets, recent activity feed, and top courses with live progress.
+ * Dashboard Page — Widget-based dashboard with actionable KPI metrics.
+ * Replaces activity feed with structured widget rows per Cloud Assess patterns.
  */
 import { DashboardLayout } from '../components/DashboardLayout';
 import { KPIWidget } from '../components/KPIWidget';
-import { StatusBadge } from '../components/StatusBadge';
 import { useAuth } from '../contexts/AuthContext';
 import { useSupabaseQuery } from '@/hooks/useSupabaseQuery';
-import { fetchDashboardStats, fetchRecentActivity, fetchCourseProgressSummary } from '@/lib/api';
+import { fetchDashboardStats, fetchCourseProgressSummary } from '@/lib/api';
 import { isSupabaseConfigured } from '@/lib/supabase';
 import { Card } from '@/components/ui/card';
 import { Progress } from '@/components/ui/progress';
 import { Button } from '@/components/ui/button';
 import {
-  Users, GraduationCap, BookOpen, ClipboardCheck, Activity,
-  TrendingUp, Clock, AlertTriangle, CheckCircle2, ArrowRight,
-  FileText, UserPlus, Zap, Loader2, AlertCircle,
+  Users, GraduationCap, BookOpen, ClipboardCheck,
+  TrendingUp, ArrowRight, CheckSquare, Calendar,
+  UserPlus, Zap, Loader2, AlertCircle,
+  Building2, BarChart3,
 } from 'lucide-react';
 import { Link } from 'react-router-dom';
 
@@ -27,37 +27,10 @@ export default function Dashboard() {
     []
   );
 
-  const { data: activity, loading: activityLoading } = useSupabaseQuery(
-    () => fetchRecentActivity(8),
-    []
-  );
-
   const { data: courseProgress, loading: coursesLoading } = useSupabaseQuery(
     () => fetchCourseProgressSummary(),
     []
   );
-
-  // Map activity log events to icons and colors
-  const getActivityIcon = (event: string | null, description: string) => {
-    const desc = (description ?? '').toLowerCase();
-    if (desc.includes('enrol') || desc.includes('register')) return { icon: UserPlus, color: 'text-[#3b82f6]' };
-    if (desc.includes('complet')) return { icon: CheckCircle2, color: 'text-[#22c55e]' };
-    if (desc.includes('submit') || desc.includes('assess') || desc.includes('quiz')) return { icon: ClipboardCheck, color: 'text-[#14b8a6]' };
-    if (desc.includes('alert') || desc.includes('warn') || desc.includes('risk')) return { icon: AlertTriangle, color: 'text-[#f59e0b]' };
-    return { icon: FileText, color: 'text-[#3b82f6]' };
-  };
-
-  const formatTimeAgo = (dateStr: string | null) => {
-    if (!dateStr) return '';
-    const diff = Date.now() - new Date(dateStr).getTime();
-    const mins = Math.floor(diff / 60000);
-    if (mins < 1) return 'just now';
-    if (mins < 60) return `${mins} min ago`;
-    const hrs = Math.floor(mins / 60);
-    if (hrs < 24) return `${hrs} hr${hrs > 1 ? 's' : ''} ago`;
-    const days = Math.floor(hrs / 24);
-    return `${days} day${days > 1 ? 's' : ''} ago`;
-  };
 
   if (!isSupabaseConfigured) {
     return (
@@ -73,10 +46,19 @@ export default function Dashboard() {
     );
   }
 
+  // Compute completion rate from course progress data
+  const completionRate = (() => {
+    if (!courseProgress || courseProgress.length === 0) return 0;
+    const totalEnrolled = courseProgress.reduce((sum, c) => sum + c.total_enrolled, 0);
+    const totalCompleted = courseProgress.reduce((sum, c) => sum + c.completed, 0);
+    return totalEnrolled > 0 ? Math.round((totalCompleted / totalEnrolled) * 100) : 0;
+  })();
+
   return (
     <DashboardLayout title="Dashboard" subtitle={`Welcome back, ${user?.name || 'User'}`}>
       <div className="space-y-6 animate-fade-in-up">
-        {/* KPI Widgets */}
+
+        {/* Row 1: Primary KPIs */}
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
           {statsLoading ? (
             Array.from({ length: 4 }).map((_, i) => (
@@ -92,83 +74,80 @@ export default function Dashboard() {
           ) : stats ? (
             <>
               <KPIWidget
-                label="Total Students"
+                label="Total Learners"
                 value={stats.activeStudents.toLocaleString()}
                 icon={Users}
-                trend={{ value: stats.totalStudents - stats.activeStudents, label: `${stats.totalStudents} total` }}
+                subtitle={`${stats.totalStudents} total across all statuses`}
                 color="blue"
+                link="/students"
               />
               <KPIWidget
                 label="Active Enrolments"
                 value={stats.activeEnrolments.toLocaleString()}
                 icon={GraduationCap}
-                trend={{ value: stats.completedEnrolments, label: `${stats.completedEnrolments} completed` }}
+                subtitle={`${stats.completedEnrolments} completed`}
                 color="teal"
+                link="/enrolments"
               />
               <KPIWidget
                 label="Courses"
                 value={stats.publishedCourses.toLocaleString()}
                 icon={BookOpen}
-                trend={{ value: stats.totalCourses - stats.publishedCourses, label: `${stats.totalCourses} total` }}
+                subtitle={`${stats.totalCourses} total, ${stats.totalCourses - stats.publishedCourses} draft`}
                 color="amber"
+                link="/courses"
               />
               <KPIWidget
                 label="Pending Assessments"
                 value={stats.pendingAssessments.toLocaleString()}
                 icon={ClipboardCheck}
-                trend={{ value: stats.totalCompanies, label: `${stats.totalCompanies} companies` }}
+                subtitle="Awaiting marking or review"
                 color="red"
+                link="/assessments"
               />
             </>
           ) : null}
         </div>
 
-        {/* Main content grid */}
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-          {/* Recent Activity */}
-          <Card className="lg:col-span-2 p-0 overflow-hidden border-[#e2e8f0]/50 shadow-card">
-            <div className="flex items-center justify-between px-5 py-4 border-b border-[#e2e8f0]">
-              <div className="flex items-center gap-2">
-                <Activity className="w-4 h-4 text-[#3b82f6]" />
-                <h3 className="font-heading font-semibold text-[#1e293b]">Recent Activity</h3>
-              </div>
-              <Link to="/reports" className="text-sm text-[#3b82f6] hover:underline flex items-center gap-1">
-                View all <ArrowRight className="w-3.5 h-3.5" />
-              </Link>
-            </div>
-            <div className="divide-y divide-[#f1f5f9]">
-              {activityLoading ? (
-                <div className="py-12 text-center">
-                  <Loader2 className="mx-auto h-5 w-5 animate-spin text-blue-500" />
-                  <p className="mt-2 text-xs text-muted-foreground">Loading activity...</p>
-                </div>
-              ) : (activity ?? []).length === 0 ? (
-                <div className="py-12 text-center text-sm text-muted-foreground">
-                  No recent activity
-                </div>
-              ) : (
-                (activity ?? []).map((item) => {
-                  const { icon: Icon, color } = getActivityIcon(item.event, item.description);
-                  return (
-                    <div key={item.id} className="flex items-start gap-3 px-5 py-3.5 hover:bg-[#f8fafc] transition-colors">
-                      <div className="mt-0.5">
-                        <Icon className={`w-4 h-4 ${color}`} />
-                      </div>
-                      <div className="flex-1 min-w-0">
-                        <p className="text-sm text-[#1e293b]">{item.description}</p>
-                        <p className="text-xs text-[#94a3b8] mt-0.5 flex items-center gap-1">
-                          <Clock className="w-3 h-3" /> {formatTimeAgo(item.created_at)}
-                        </p>
-                      </div>
-                    </div>
-                  );
-                })
-              )}
-            </div>
-          </Card>
+        {/* Row 2: Activity & Task Widgets */}
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+          <KPIWidget
+            label="To Do"
+            value="—"
+            icon={CheckSquare}
+            subtitle="Tasks pending"
+            color="orange"
+            link="/training/todo"
+          />
+          <KPIWidget
+            label="Completion Rate"
+            value={`${completionRate}%`}
+            icon={TrendingUp}
+            subtitle="Across active courses"
+            color="green"
+          />
+          <KPIWidget
+            label="Companies"
+            value={stats?.totalCompanies?.toLocaleString() ?? '—'}
+            icon={Building2}
+            subtitle="Registered organisations"
+            color="purple"
+            link="/companies"
+          />
+          <KPIWidget
+            label="Calendar"
+            value="—"
+            icon={Calendar}
+            subtitle="Upcoming events"
+            color="blue"
+            link="/training/calendar"
+          />
+        </div>
 
+        {/* Row 3: Top Courses & Quick Actions side by side */}
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
           {/* Top Courses by Enrolment */}
-          <Card className="p-0 overflow-hidden border-[#e2e8f0]/50 shadow-card">
+          <Card className="lg:col-span-2 p-0 overflow-hidden border-[#e2e8f0]/50 shadow-card">
             <div className="flex items-center justify-between px-5 py-4 border-b border-[#e2e8f0]">
               <div className="flex items-center gap-2">
                 <TrendingUp className="w-4 h-4 text-[#14b8a6]" />
@@ -210,41 +189,42 @@ export default function Dashboard() {
               )}
             </div>
           </Card>
+
+          {/* Quick Actions */}
+          <Card className="p-5 border-[#e2e8f0]/50 shadow-card">
+            <div className="flex items-center gap-2 mb-4">
+              <Zap className="w-4 h-4 text-[#f59e0b]" />
+              <h3 className="font-heading font-semibold text-[#1e293b]">Quick Actions</h3>
+            </div>
+            <div className="grid grid-cols-2 gap-3">
+              <Link to="/students">
+                <Button variant="outline" className="w-full h-auto py-4 flex flex-col gap-2 border-[#e2e8f0] hover:border-[#3b82f6] hover:bg-[#eff6ff] transition-all">
+                  <UserPlus className="w-5 h-5 text-[#3b82f6]" />
+                  <span className="text-xs font-medium">Add Learner</span>
+                </Button>
+              </Link>
+              <Link to="/courses">
+                <Button variant="outline" className="w-full h-auto py-4 flex flex-col gap-2 border-[#e2e8f0] hover:border-[#14b8a6] hover:bg-[#f0fdfa] transition-all">
+                  <BookOpen className="w-5 h-5 text-[#14b8a6]" />
+                  <span className="text-xs font-medium">New Journey</span>
+                </Button>
+              </Link>
+              <Link to="/assessments">
+                <Button variant="outline" className="w-full h-auto py-4 flex flex-col gap-2 border-[#e2e8f0] hover:border-[#f59e0b] hover:bg-[#fffbeb] transition-all">
+                  <ClipboardCheck className="w-5 h-5 text-[#f59e0b]" />
+                  <span className="text-xs font-medium">Mark Assessment</span>
+                </Button>
+              </Link>
+              <Link to="/reports">
+                <Button variant="outline" className="w-full h-auto py-4 flex flex-col gap-2 border-[#e2e8f0] hover:border-[#8b5cf6] hover:bg-[#f5f3ff] transition-all">
+                  <BarChart3 className="w-5 h-5 text-[#8b5cf6]" />
+                  <span className="text-xs font-medium">View Reports</span>
+                </Button>
+              </Link>
+            </div>
+          </Card>
         </div>
 
-        {/* Quick Actions */}
-        <Card className="p-5 border-[#e2e8f0]/50 shadow-card">
-          <div className="flex items-center gap-2 mb-4">
-            <Zap className="w-4 h-4 text-[#f59e0b]" />
-            <h3 className="font-heading font-semibold text-[#1e293b]">Quick Actions</h3>
-          </div>
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-            <Link to="/students">
-              <Button variant="outline" className="w-full h-auto py-4 flex flex-col gap-2 border-[#e2e8f0] hover:border-[#3b82f6] hover:bg-[#eff6ff] transition-all">
-                <UserPlus className="w-5 h-5 text-[#3b82f6]" />
-                <span className="text-xs font-medium">Add Student</span>
-              </Button>
-            </Link>
-            <Link to="/courses">
-              <Button variant="outline" className="w-full h-auto py-4 flex flex-col gap-2 border-[#e2e8f0] hover:border-[#14b8a6] hover:bg-[#f0fdfa] transition-all">
-                <BookOpen className="w-5 h-5 text-[#14b8a6]" />
-                <span className="text-xs font-medium">New Course</span>
-              </Button>
-            </Link>
-            <Link to="/assessments">
-              <Button variant="outline" className="w-full h-auto py-4 flex flex-col gap-2 border-[#e2e8f0] hover:border-[#f59e0b] hover:bg-[#fffbeb] transition-all">
-                <ClipboardCheck className="w-5 h-5 text-[#f59e0b]" />
-                <span className="text-xs font-medium">Review Assessment</span>
-              </Button>
-            </Link>
-            <Link to="/reports">
-              <Button variant="outline" className="w-full h-auto py-4 flex flex-col gap-2 border-[#e2e8f0] hover:border-[#8b5cf6] hover:bg-[#f5f3ff] transition-all">
-                <FileText className="w-5 h-5 text-[#8b5cf6]" />
-                <span className="text-xs font-medium">Generate Report</span>
-              </Button>
-            </Link>
-          </div>
-        </Card>
       </div>
     </DashboardLayout>
   );

@@ -2387,3 +2387,307 @@ export async function fetchCourseProgressSummary(): Promise<CourseProgressSummar
     handleError(e, 'Failed to fetch course progress summary');
   }
 }
+
+// ─── Student-Facing LMS ────────────────────────────────────────────────────
+
+export interface StudentEnrolledCourse {
+  enrolment_id: number;
+  course_id: number;
+  course_title: string;
+  course_code: string | null;
+  status: string;
+  course_start_at: string | null;
+  course_ends_at: string | null;
+  course_completed_at: string | null;
+  lesson_count: number;
+  topic_count: number;
+  quiz_count: number;
+  quizzes_passed: number;
+  progress_percentage: number;
+}
+
+export async function fetchMyEnrolledCourses(userId: number): Promise<StudentEnrolledCourse[]> {
+  assertConfigured();
+  try {
+    const { data: enrolments, error } = await supabase
+      .from('student_course_enrolments')
+      .select('id, course_id, status, course_start_at, course_ends_at, course_completed_at, course_progress_id')
+      .eq('user_id', userId)
+      .order('created_at', { ascending: false });
+    if (error) throw error;
+    if (!enrolments || enrolments.length === 0) return [];
+
+    const courseIds = Array.from(new Set(enrolments.map(e => e.course_id)));
+
+    const { data: courses } = await supabase
+      .from('courses')
+      .select('id, title, code')
+      .in('id', courseIds);
+
+    const courseMap = new Map((courses ?? []).map(c => [c.id, c]));
+
+    // Get quiz counts per course
+    const { data: quizCounts } = await supabase
+      .from('quizzes')
+      .select('course_id')
+      .in('course_id', courseIds);
+
+    const quizCountMap = new Map<number, number>();
+    (quizCounts ?? []).forEach(q => {
+      quizCountMap.set(q.course_id, (quizCountMap.get(q.course_id) ?? 0) + 1);
+    });
+
+    // Get passed quiz counts per course for this user
+    const { data: passedAttempts } = await supabase
+      .from('quiz_attempts')
+      .select('course_id, quiz_id')
+      .eq('user_id', userId)
+      .eq('status', 'SATISFACTORY')
+      .is('deleted_at', null)
+      .in('course_id', courseIds);
+
+    const passedMap = new Map<number, Set<number>>();
+    (passedAttempts ?? []).forEach(a => {
+      if (!passedMap.has(a.course_id)) passedMap.set(a.course_id, new Set());
+      passedMap.get(a.course_id)!.add(a.quiz_id);
+    });
+
+    // Get lesson/topic counts
+    const { data: lessonCounts } = await supabase
+      .from('lessons')
+      .select('course_id')
+      .in('course_id', courseIds);
+
+    const lessonCountMap = new Map<number, number>();
+    (lessonCounts ?? []).forEach(l => {
+      lessonCountMap.set(l.course_id, (lessonCountMap.get(l.course_id) ?? 0) + 1);
+    });
+
+    const { data: topicCounts } = await supabase
+      .from('topics')
+      .select('course_id')
+      .in('course_id', courseIds);
+
+    const topicCountMap = new Map<number, number>();
+    (topicCounts ?? []).forEach(t => {
+      topicCountMap.set(t.course_id, (topicCountMap.get(t.course_id) ?? 0) + 1);
+    });
+
+    return enrolments.map(e => {
+      const course = courseMap.get(e.course_id);
+      const totalQuizzes = quizCountMap.get(e.course_id) ?? 0;
+      const passed = passedMap.get(e.course_id)?.size ?? 0;
+      const pct = totalQuizzes > 0 ? Math.round((passed / totalQuizzes) * 100) : 0;
+
+      return {
+        enrolment_id: e.id,
+        course_id: e.course_id,
+        course_title: course?.title ?? 'Unknown Course',
+        course_code: course?.code ?? null,
+        status: e.status ?? 'ACTIVE',
+        course_start_at: e.course_start_at,
+        course_ends_at: e.course_ends_at,
+        course_completed_at: e.course_completed_at,
+        lesson_count: lessonCountMap.get(e.course_id) ?? 0,
+        topic_count: topicCountMap.get(e.course_id) ?? 0,
+        quiz_count: totalQuizzes,
+        quizzes_passed: passed,
+        progress_percentage: pct,
+      };
+    });
+  } catch (e) {
+    handleError(e, 'Failed to fetch enrolled courses');
+  }
+}
+
+export interface StudentLessonView {
+  id: number;
+  order: number;
+  title: string;
+  course_id: number;
+  topics: {
+    id: number;
+    order: number;
+    title: string;
+    estimated_time: number | null;
+    has_quiz: number;
+    quizzes: {
+      id: number;
+      title: string;
+      status: string | null; // Latest attempt status for this user
+      attempts: number;
+    }[];
+  }[];
+}
+
+export async function fetchCourseLessonsForStudent(courseId: number, userId: number): Promise<StudentLessonView[]> {
+  assertConfigured();
+  try {
+    const { data: lessons, error } = await supabase
+      .from('lessons')
+      .select('id, "order", title, course_id')
+      .eq('course_id', courseId)
+      .order('order');
+    if (error) throw error;
+    if (!lessons || lessons.length === 0) return [];
+
+    const lessonIds = lessons.map(l => l.id);
+
+    const { data: topics } = await supabase
+      .from('topics')
+      .select('id, "order", title, estimated_time, has_quiz, lesson_id')
+      .in('lesson_id', lessonIds)
+      .order('order');
+
+    const { data: quizzes } = await supabase
+      .from('quizzes')
+      .select('id, title, topic_id, lesson_id')
+      .eq('course_id', courseId)
+      .order('order');
+
+    // Get user's quiz attempts for this course
+    const { data: attempts } = await supabase
+      .from('quiz_attempts')
+      .select('quiz_id, status, attempt')
+      .eq('user_id', userId)
+      .eq('course_id', courseId)
+      .is('deleted_at', null)
+      .order('attempt', { ascending: false });
+
+    // Build quiz status map: quiz_id -> { status, attempts }
+    const quizStatusMap = new Map<number, { status: string; attempts: number }>();
+    (attempts ?? []).forEach(a => {
+      if (!quizStatusMap.has(a.quiz_id)) {
+        quizStatusMap.set(a.quiz_id, { status: a.status, attempts: a.attempt });
+      }
+    });
+
+    // Build topic map
+    const topicMap = new Map<number, typeof topics>();
+    (topics ?? []).forEach(t => {
+      if (!topicMap.has(t.lesson_id)) topicMap.set(t.lesson_id, []);
+      topicMap.get(t.lesson_id)!.push(t);
+    });
+
+    // Build quiz map by topic
+    const quizByTopic = new Map<number, typeof quizzes>();
+    (quizzes ?? []).forEach(q => {
+      const key = q.topic_id ?? q.lesson_id;
+      if (!quizByTopic.has(key)) quizByTopic.set(key, []);
+      quizByTopic.get(key)!.push(q);
+    });
+
+    return lessons.map(l => ({
+      id: l.id,
+      order: l.order,
+      title: l.title,
+      course_id: l.course_id,
+      topics: (topicMap.get(l.id) ?? []).map(t => ({
+        id: t.id,
+        order: t.order,
+        title: t.title,
+        estimated_time: t.estimated_time,
+        has_quiz: t.has_quiz,
+        quizzes: (quizByTopic.get(t.id) ?? []).map(q => {
+          const qs = quizStatusMap.get(q.id);
+          return {
+            id: q.id,
+            title: q.title,
+            status: qs?.status ?? null,
+            attempts: qs?.attempts ?? 0,
+          };
+        }),
+      })),
+    }));
+  } catch (e) {
+    handleError(e, 'Failed to fetch course lessons');
+  }
+}
+
+export interface QuizForAttempt {
+  id: number;
+  title: string;
+  passing_percentage: number;
+  allowed_attempts: number;
+  questions: any[];
+  user_attempts: number;
+}
+
+export async function fetchQuizForAttempt(quizId: number, userId: number): Promise<QuizForAttempt> {
+  assertConfigured();
+  try {
+    const { data: quiz, error } = await supabase
+      .from('quizzes')
+      .select('id, title, passing_percentage, allowed_attempts')
+      .eq('id', quizId)
+      .single();
+    if (error) throw error;
+
+    const { data: questions } = await supabase
+      .from('questions')
+      .select('id, "order", title, content, answer_type, options, correct_answer, table_structure')
+      .eq('quiz_id', quizId)
+      .order('order');
+
+    // Count existing attempts
+    const { count } = await supabase
+      .from('quiz_attempts')
+      .select('id', { count: 'exact', head: true })
+      .eq('quiz_id', quizId)
+      .eq('user_id', userId)
+      .is('deleted_at', null);
+
+    return {
+      id: quiz.id,
+      title: quiz.title,
+      passing_percentage: quiz.passing_percentage ?? 0,
+      allowed_attempts: quiz.allowed_attempts ?? 3,
+      questions: (questions ?? []).map(q => ({
+        ...q,
+        options: typeof q.options === 'string' ? JSON.parse(q.options) : q.options,
+        correct_answer: typeof q.correct_answer === 'string' ? JSON.parse(q.correct_answer) : q.correct_answer,
+        table_structure: typeof q.table_structure === 'string' ? JSON.parse(q.table_structure) : q.table_structure,
+      })),
+      user_attempts: count ?? 0,
+    };
+  } catch (e) {
+    handleError(e, 'Failed to fetch quiz');
+  }
+}
+
+export async function submitQuizAttempt(params: {
+  userId: number;
+  courseId: number;
+  lessonId: number;
+  topicId: number;
+  quizId: number;
+  questions: any[];
+  submittedAnswers: Record<string, any>;
+  attemptNumber: number;
+}): Promise<{ id: number; status: string }> {
+  assertConfigured();
+  try {
+    const { data, error } = await supabase
+      .from('quiz_attempts')
+      .insert({
+        user_id: params.userId,
+        course_id: params.courseId,
+        lesson_id: params.lessonId,
+        topic_id: params.topicId,
+        quiz_id: params.quizId,
+        questions: JSON.stringify(params.questions),
+        submitted_answers: JSON.stringify(params.submittedAnswers),
+        attempt: params.attemptNumber,
+        status: 'SUBMITTED',
+        submitted_at: new Date().toISOString(),
+        created_at: new Date().toISOString(),
+        updated_at: new Date().toISOString(),
+      })
+      .select('id, status')
+      .single();
+    if (error) throw error;
+    return data;
+  } catch (e) {
+    handleError(e, 'Failed to submit quiz attempt');
+  }
+}

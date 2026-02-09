@@ -1,6 +1,6 @@
 /**
  * Sidebar Navigation - NytroAI design language
- * Clean white sidebar with blue active states, Nytro branding
+ * Three-tier collapsible sidebar: Training / Framework / Settings
  */
 import React, { useState } from 'react';
 import { useLocation, Link } from 'react-router-dom';
@@ -16,12 +16,25 @@ import {
   LogOut,
   ChevronLeft,
   ChevronRight,
+  ChevronDown,
   Building2,
   UserCog,
   FileText,
   Menu,
   X,
   User,
+  CheckSquare,
+  Calendar,
+  Map,
+  Building,
+  Shield,
+  FolderOpen,
+  Sliders,
+  Mail,
+  Zap,
+  Database,
+  Layers,
+  UserCheck,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
@@ -29,20 +42,57 @@ interface NavItem {
   label: string;
   icon: React.ElementType;
   path: string;
-  roles?: string[];
-  children?: { label: string; path: string }[];
 }
 
-const navItems: NavItem[] = [
-  { label: 'Dashboard', icon: LayoutDashboard, path: '/dashboard' },
-  { label: 'Students', icon: Users, path: '/students', roles: ['admin', 'trainer'] },
-  { label: 'Courses', icon: BookOpen, path: '/courses' },
-  { label: 'Assessments', icon: ClipboardCheck, path: '/assessments' },
-  { label: 'Enrolments', icon: GraduationCap, path: '/enrolments', roles: ['admin', 'trainer'] },
-  { label: 'Companies', icon: Building2, path: '/companies', roles: ['admin'] },
-  { label: 'Reports', icon: BarChart3, path: '/reports', roles: ['admin', 'trainer'] },
-  { label: 'User Management', icon: UserCog, path: '/user-management', roles: ['admin'] },
-  { label: 'Settings', icon: Settings, path: '/settings', roles: ['admin'] },
+interface NavSection {
+  label: string;
+  icon: React.ElementType;
+  items: NavItem[];
+  roles?: string[];
+}
+
+const navSections: NavSection[] = [
+  {
+    label: 'Training',
+    icon: GraduationCap,
+    items: [
+      { label: 'Dashboard', icon: LayoutDashboard, path: '/dashboard' },
+      { label: 'My Courses', icon: BookOpen, path: '/my-courses' },
+      { label: 'To Do', icon: CheckSquare, path: '/training/todo' },
+      { label: 'Calendar', icon: Calendar, path: '/training/calendar' },
+      { label: 'All Records', icon: FileText, path: '/training/records' },
+      { label: 'Intakes', icon: Users, path: '/training/intakes' },
+      { label: 'Learners', icon: UserCheck, path: '/students' },
+      { label: 'Assessments', icon: ClipboardCheck, path: '/assessments' },
+      { label: 'Enrolments', icon: GraduationCap, path: '/enrolments' },
+      { label: 'Reports', icon: BarChart3, path: '/reports' },
+    ],
+  },
+  {
+    label: 'Framework',
+    icon: Layers,
+    items: [
+      { label: 'Journeys', icon: Map, path: '/courses' },
+      { label: 'Organisation', icon: Building, path: '/framework/organisation' },
+      { label: 'Companies', icon: Building2, path: '/companies' },
+      { label: 'Trainers', icon: UserCog, path: '/framework/trainers' },
+      { label: 'Leaders', icon: Shield, path: '/framework/leaders' },
+      { label: 'Resources', icon: FolderOpen, path: '/framework/resources' },
+    ],
+    roles: ['admin', 'trainer'],
+  },
+  {
+    label: 'Settings',
+    icon: Settings,
+    items: [
+      { label: 'General', icon: Sliders, path: '/settings' },
+      { label: 'Users', icon: Users, path: '/user-management' },
+      { label: 'Communications', icon: Mail, path: '/settings/communications' },
+      { label: 'Automation', icon: Zap, path: '/settings/automation' },
+      { label: 'Data Types', icon: Database, path: '/settings/data-types' },
+    ],
+    roles: ['admin'],
+  },
 ];
 
 export function Sidebar() {
@@ -50,12 +100,21 @@ export function Sidebar() {
   const { user, logout } = useAuth();
   const [collapsed, setCollapsed] = useState(false);
   const [mobileOpen, setMobileOpen] = useState(false);
+  const [expandedSections, setExpandedSections] = useState<Record<string, boolean>>({
+    Training: true,
+    Framework: true,
+    Settings: true,
+  });
 
-  const filteredItems = navItems.filter(
-    (item) => !item.roles || (user && item.roles.includes(user.role))
+  const filteredSections = navSections.filter(
+    (section) => !section.roles || (user && section.roles.includes(user.role))
   );
 
   const isActive = (path: string) => location.pathname === path || location.pathname.startsWith(path + '/');
+
+  const toggleSection = (label: string) => {
+    setExpandedSections(prev => ({ ...prev, [label]: !prev[label] }));
+  };
 
   const NavContent = () => (
     <div className="flex flex-col h-full">
@@ -80,45 +139,85 @@ export function Sidebar() {
         </div>
       </Link>
 
-      {/* Navigation */}
-      <nav className="flex-1 py-3 px-2 space-y-0.5 overflow-y-auto">
-        {filteredItems.map((item) => {
-          const Icon = item.icon;
-          const active = isActive(item.path);
+      {/* Navigation sections */}
+      <nav className="flex-1 py-2 px-2 overflow-y-auto">
+        {filteredSections.map((section) => {
+          const SectionIcon = section.icon;
+          const isExpanded = expandedSections[section.label] ?? true;
+          const hasActiveItem = section.items.some(item => isActive(item.path));
+
           return (
-            <Link
-              key={item.path}
-              to={item.path}
-              onClick={() => setMobileOpen(false)}
-              className={cn(
-                "flex items-center gap-3 rounded-lg transition-all duration-200 group relative",
-                collapsed ? "px-3 py-2.5 justify-center" : "px-3 py-2.5",
-                active
-                  ? "bg-[#eff6ff] text-[#3b82f6]"
-                  : "text-[#64748b] hover:bg-[#f8fafc] hover:text-[#1e293b]"
-              )}
-            >
-              <Icon className={cn(
-                "w-5 h-5 flex-shrink-0 transition-colors",
-                active ? "text-[#3b82f6]" : "text-[#94a3b8] group-hover:text-[#64748b]"
-              )} />
-              {!collapsed && (
-                <span className={cn(
-                  "text-sm font-medium transition-colors",
-                  active ? "text-[#3b82f6] font-semibold" : ""
-                )}>
-                  {item.label}
-                </span>
-              )}
-              {active && (
-                <div className="absolute left-0 top-1/2 -translate-y-1/2 w-[3px] h-6 bg-[#3b82f6] rounded-r-full" />
-              )}
-              {collapsed && (
-                <div className="absolute left-full ml-2 px-2 py-1 bg-[#1e293b] text-white text-xs rounded-md opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none whitespace-nowrap z-50">
-                  {item.label}
+            <div key={section.label} className="mb-1">
+              {/* Section header */}
+              {collapsed ? (
+                <div className="flex items-center justify-center py-2 my-1">
+                  <div className="w-5 h-px bg-[#e2e8f0]" />
                 </div>
+              ) : (
+                <button
+                  onClick={() => toggleSection(section.label)}
+                  className={cn(
+                    "flex items-center justify-between w-full px-3 py-2 rounded-lg text-xs font-semibold uppercase tracking-wider transition-colors",
+                    hasActiveItem ? "text-[#3b82f6]" : "text-[#94a3b8] hover:text-[#64748b]"
+                  )}
+                >
+                  <div className="flex items-center gap-2">
+                    <SectionIcon className="w-3.5 h-3.5" />
+                    <span>{section.label}</span>
+                  </div>
+                  <ChevronDown className={cn(
+                    "w-3.5 h-3.5 transition-transform duration-200",
+                    isExpanded ? "" : "-rotate-90"
+                  )} />
+                </button>
               )}
-            </Link>
+
+              {/* Section items */}
+              <div className={cn(
+                "space-y-0.5 overflow-hidden transition-all duration-200",
+                !collapsed && !isExpanded ? "max-h-0 opacity-0" : "max-h-[500px] opacity-100"
+              )}>
+                {section.items.map((item) => {
+                  const Icon = item.icon;
+                  const active = isActive(item.path);
+                  return (
+                    <Link
+                      key={item.path}
+                      to={item.path}
+                      onClick={() => setMobileOpen(false)}
+                      className={cn(
+                        "flex items-center gap-3 rounded-lg transition-all duration-200 group relative",
+                        collapsed ? "px-3 py-2.5 justify-center" : "px-3 py-2 pl-8",
+                        active
+                          ? "bg-[#eff6ff] text-[#3b82f6]"
+                          : "text-[#64748b] hover:bg-[#f8fafc] hover:text-[#1e293b]"
+                      )}
+                    >
+                      <Icon className={cn(
+                        "w-[18px] h-[18px] flex-shrink-0 transition-colors",
+                        active ? "text-[#3b82f6]" : "text-[#94a3b8] group-hover:text-[#64748b]"
+                      )} />
+                      {!collapsed && (
+                        <span className={cn(
+                          "text-[13px] font-medium transition-colors",
+                          active ? "text-[#3b82f6] font-semibold" : ""
+                        )}>
+                          {item.label}
+                        </span>
+                      )}
+                      {active && (
+                        <div className="absolute left-0 top-1/2 -translate-y-1/2 w-[3px] h-5 bg-[#3b82f6] rounded-r-full" />
+                      )}
+                      {collapsed && (
+                        <div className="absolute left-full ml-2 px-2 py-1 bg-[#1e293b] text-white text-xs rounded-md opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none whitespace-nowrap z-50">
+                          {item.label}
+                        </div>
+                      )}
+                    </Link>
+                  );
+                })}
+              </div>
+            </div>
           );
         })}
       </nav>
@@ -200,7 +299,7 @@ export function Sidebar() {
       {/* Desktop sidebar */}
       <aside className={cn(
         "hidden lg:flex flex-col bg-white border-r border-[#e2e8f0] h-screen sticky top-0 transition-all duration-300",
-        collapsed ? "w-[68px]" : "w-[240px]"
+        collapsed ? "w-[68px]" : "w-[250px]"
       )}>
         <NavContent />
       </aside>
