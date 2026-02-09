@@ -4,12 +4,12 @@
  */
 import React from 'react';
 import { cn } from '@/lib/utils';
-import { TrendingUp, TrendingDown } from 'lucide-react';
+import { TrendingUp, TrendingDown, type LucideIcon } from 'lucide-react';
 
 interface KPIWidgetProps {
   label: string;
   value: string | number;
-  icon: React.ElementType;
+  icon: LucideIcon;
   trend?: { value: number; label: string };
   color?: 'blue' | 'teal' | 'amber' | 'red' | 'green';
 }
