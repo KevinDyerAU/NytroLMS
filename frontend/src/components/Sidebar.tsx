@@ -68,14 +68,16 @@ export function Sidebar() {
         )}
       >
         <div className="flex items-center gap-3">
-          <div className="w-9 h-9 rounded-lg bg-gradient-nytro flex items-center justify-center flex-shrink-0">
-            <span className="text-white font-bold text-sm font-heading">N</span>
-          </div>
-          {!collapsed && (
-            <div className="animate-fade-in">
-              <h1 className="font-heading font-bold text-[#1e293b] text-lg leading-tight">NytroLMS</h1>
-              <p className="text-[10px] text-[#94a3b8] font-medium tracking-wide uppercase">Nytro Powered</p>
+          {collapsed ? (
+            <div className="w-9 h-9 rounded-lg bg-gradient-nytro flex items-center justify-center flex-shrink-0">
+              <span className="text-white font-bold text-sm font-heading">N</span>
             </div>
+          ) : (
+            <img
+              src="/nytro-logo.png"
+              alt="NytroLMS"
+              className="h-8 w-auto object-contain"
+            />
           )}
         </div>
       </Link>
