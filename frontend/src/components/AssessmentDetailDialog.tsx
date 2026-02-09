@@ -18,13 +18,14 @@ import {
   evaluateQuestion,
   submitAssessmentFeedback,
   returnAssessment,
+  emailAssessment,
   type QuizAttemptFullReview,
   type QuizQuestion,
   type EvaluationResult,
 } from '@/lib/api';
 import {
   Loader2, CheckCircle2, XCircle, HelpCircle, MessageSquare,
-  ClipboardCheck, RotateCcw, Send, ChevronDown, ChevronUp,
+  ClipboardCheck, RotateCcw, Send, ChevronDown, ChevronUp, Mail,
 } from 'lucide-react';
 import { toast } from 'sonner';
 
@@ -49,6 +50,8 @@ export function AssessmentDetailDialog({ open, onOpenChange, attemptId }: Assess
   const [overallStatus, setOverallStatus] = useState<'SATISFACTORY' | 'FAIL'>('SATISFACTORY');
   const [submittingFeedback, setSubmittingFeedback] = useState(false);
   const [returning, setReturning] = useState(false);
+  const [assisted, setAssisted] = useState(false);
+  const [emailing, setEmailing] = useState(false);
   // Expand/collapse questions
   const [expandedQuestions, setExpandedQuestions] = useState<Set<number>>(new Set());
 
@@ -93,9 +96,17 @@ export function AssessmentDetailDialog({ open, onOpenChange, attemptId }: Assess
     if (!data || !authUser || !feedbackText.trim()) return;
     setSubmittingFeedback(true);
     try {
-      await submitAssessmentFeedback(data.id, data.quiz_id, data.user_id, authUser.id, feedbackText.trim(), overallStatus);
-      toast.success(`Assessment marked as ${overallStatus}`);
+      const result = await submitAssessmentFeedback(
+        data.id, data.quiz_id, data.user_id, authUser.id,
+        feedbackText.trim(), overallStatus, assisted,
+      );
+      if (result?.autoReturned) {
+        toast.info('Assessment marked as NOT SATISFACTORY — automatically returned to student');
+      } else {
+        toast.success(`Assessment marked as ${overallStatus}`);
+      }
       setFeedbackText('');
+      setAssisted(false);
       const refreshed = await fetchQuizAttemptFullReview(attemptId);
       if (refreshed) setData(refreshed);
     } catch {
@@ -106,10 +117,10 @@ export function AssessmentDetailDialog({ open, onOpenChange, attemptId }: Assess
   };
 
   const handleReturn = async () => {
-    if (!data) return;
+    if (!data || !authUser) return;
     setReturning(true);
     try {
-      await returnAssessment(data.id);
+      await returnAssessment(data.id, authUser.id);
       toast.success('Assessment returned to student');
       const refreshed = await fetchQuizAttemptFullReview(attemptId);
       if (refreshed) setData(refreshed);
@@ -117,6 +128,19 @@ export function AssessmentDetailDialog({ open, onOpenChange, attemptId }: Assess
       toast.error('Failed to return assessment');
     } finally {
       setReturning(false);
+    }
+  };
+
+  const handleEmailAssessment = async () => {
+    if (!data || !authUser) return;
+    setEmailing(true);
+    try {
+      await emailAssessment(data.id, authUser.id);
+      toast.success('Assessment emailed to student');
+    } catch {
+      toast.error('Failed to email assessment');
+    } finally {
+      setEmailing(false);
     }
   };
 
@@ -178,6 +202,22 @@ export function AssessmentDetailDialog({ open, onOpenChange, attemptId }: Assess
                 <div><span className="text-[#94a3b8]">Result</span> <span className="font-medium ml-1"><StatusBadge status={data.evaluation.status} /></span></div>
               )}
             </div>
+
+            {/* Email Assessment button — shown when assessment has been marked */}
+            {data.evaluation?.status && (
+              <div className="flex justify-end">
+                <Button
+                  size="sm"
+                  variant="outline"
+                  className="text-xs gap-1"
+                  disabled={emailing}
+                  onClick={handleEmailAssessment}
+                >
+                  {emailing ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Mail className="w-3.5 h-3.5" />}
+                  Email Assessment to Student
+                </Button>
+              </div>
+            )}
 
             {/* Tabs: Questions | Feedback | Actions */}
             <Tabs value={activeTab} onValueChange={setActiveTab}>
@@ -293,6 +333,17 @@ export function AssessmentDetailDialog({ open, onOpenChange, attemptId }: Assess
                         value={feedbackText}
                         onChange={(e) => setFeedbackText(e.target.value)}
                       />
+                      {/* Assisted checkbox */}
+                      <label className="flex items-center gap-2 text-sm text-[#64748b] cursor-pointer">
+                        <input
+                          type="checkbox"
+                          checked={assisted}
+                          onChange={(e) => setAssisted(e.target.checked)}
+                          className="w-4 h-4 rounded border-[#cbd5e1] text-[#3b82f6] focus:ring-[#3b82f6]"
+                        />
+                        Student required assistance
+                      </label>
+
                       <div className="flex gap-2">
                         <Button
                           size="sm"

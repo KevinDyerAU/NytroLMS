@@ -1272,6 +1272,666 @@ export async function deleteLesson(lessonId: number): Promise<void> {
   }
 }
 
+// ─── Topics ──────────────────────────────────────────────────────────────────
+
+export async function createTopic(data: {
+  title: string;
+  course_id: number;
+  lesson_id: number;
+  estimated_time: number;
+  lb_content?: string | null;
+}): Promise<{ id: number }> {
+  assertConfigured();
+  try {
+    const slug = data.title.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)/g, '');
+    const { count } = await supabase
+      .from('topics')
+      .select('id', { count: 'exact', head: true })
+      .eq('lesson_id', data.lesson_id);
+    const order = count ?? 0;
+    const now = new Date().toISOString();
+
+    const { data: newTopic, error } = await supabase
+      .from('topics')
+      .insert({
+        title: data.title,
+        slug,
+        course_id: data.course_id,
+        lesson_id: data.lesson_id,
+        order,
+        estimated_time: data.estimated_time,
+        has_quiz: false,
+        lb_content: data.lb_content || null,
+        created_at: now,
+        updated_at: now,
+      })
+      .select('id')
+      .single();
+    if (error) throw error;
+
+    // Mark parent lesson as having topics
+    await supabase.from('lessons').update({ has_topic: true, updated_at: now }).eq('id', data.lesson_id);
+
+    return { id: newTopic.id };
+  } catch (e) {
+    handleError(e, 'Failed to create topic');
+  }
+}
+
+export async function updateTopic(topicId: number, data: {
+  title?: string;
+  estimated_time?: number;
+  lb_content?: string | null;
+  course_id?: number;
+  lesson_id?: number;
+}): Promise<void> {
+  assertConfigured();
+  try {
+    const fields: Record<string, unknown> = {};
+    if (data.title !== undefined) {
+      fields.title = data.title;
+      fields.slug = data.title.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)/g, '');
+    }
+    if (data.estimated_time !== undefined) fields.estimated_time = data.estimated_time;
+    if (data.lb_content !== undefined) fields.lb_content = data.lb_content;
+    if (data.course_id !== undefined) fields.course_id = data.course_id;
+    if (data.lesson_id !== undefined) fields.lesson_id = data.lesson_id;
+    fields.updated_at = new Date().toISOString();
+
+    if (Object.keys(fields).length > 1) {
+      const { error } = await supabase.from('topics').update(fields).eq('id', topicId);
+      if (error) throw error;
+    }
+  } catch (e) {
+    handleError(e, 'Failed to update topic');
+  }
+}
+
+export async function deleteTopic(topicId: number): Promise<void> {
+  assertConfigured();
+  try {
+    // Check for associated quizzes
+    const { count } = await supabase
+      .from('quizzes')
+      .select('id', { count: 'exact', head: true })
+      .eq('topic_id', topicId);
+    if (count && count > 0) {
+      throw new Error('Delete associated quizzes first.');
+    }
+
+    // Get lesson_id before deleting for has_topic check
+    const { data: topic } = await supabase.from('topics').select('lesson_id').eq('id', topicId).single();
+    const { error } = await supabase.from('topics').delete().eq('id', topicId);
+    if (error) throw error;
+
+    // Check if lesson still has topics
+    if (topic) {
+      const { count: remaining } = await supabase
+        .from('topics')
+        .select('id', { count: 'exact', head: true })
+        .eq('lesson_id', topic.lesson_id);
+      if (remaining === 0) {
+        await supabase.from('lessons').update({ has_topic: false, updated_at: new Date().toISOString() }).eq('id', topic.lesson_id);
+      }
+    }
+  } catch (e) {
+    handleError(e, 'Failed to delete topic');
+  }
+}
+
+// ─── Quizzes ─────────────────────────────────────────────────────────────────
+
+export async function createQuiz(data: {
+  title: string;
+  course_id: number;
+  lesson_id: number;
+  topic_id: number;
+  estimated_time: number;
+  passing_percentage: number;
+  allowed_attempts: number;
+  has_checklist?: number;
+  lb_content?: string | null;
+}): Promise<{ id: number }> {
+  assertConfigured();
+  try {
+    const slug = data.title.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)/g, '');
+    const { count } = await supabase
+      .from('quizzes')
+      .select('id', { count: 'exact', head: true })
+      .eq('topic_id', data.topic_id);
+    const order = count ?? 0;
+    const now = new Date().toISOString();
+
+    const { data: newQuiz, error } = await supabase
+      .from('quizzes')
+      .insert({
+        title: data.title,
+        slug,
+        course_id: data.course_id,
+        lesson_id: data.lesson_id,
+        topic_id: data.topic_id,
+        order,
+        estimated_time: data.estimated_time,
+        passing_percentage: data.passing_percentage,
+        allowed_attempts: data.allowed_attempts ?? 999,
+        has_checklist: data.has_checklist ?? 0,
+        lb_content: data.lb_content || null,
+        created_at: now,
+        updated_at: now,
+      })
+      .select('id')
+      .single();
+    if (error) throw error;
+
+    // Mark parent topic as having quizzes
+    await supabase.from('topics').update({ has_quiz: true, updated_at: now }).eq('id', data.topic_id);
+
+    return { id: newQuiz.id };
+  } catch (e) {
+    handleError(e, 'Failed to create quiz');
+  }
+}
+
+export async function updateQuiz(quizId: number, data: {
+  title?: string;
+  estimated_time?: number;
+  passing_percentage?: number;
+  allowed_attempts?: number;
+  has_checklist?: number;
+  lb_content?: string | null;
+  course_id?: number;
+  lesson_id?: number;
+  topic_id?: number;
+}): Promise<void> {
+  assertConfigured();
+  try {
+    const fields: Record<string, unknown> = {};
+    if (data.title !== undefined) {
+      fields.title = data.title;
+      fields.slug = data.title.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)/g, '');
+    }
+    if (data.estimated_time !== undefined) fields.estimated_time = data.estimated_time;
+    if (data.passing_percentage !== undefined) fields.passing_percentage = data.passing_percentage;
+    if (data.allowed_attempts !== undefined) fields.allowed_attempts = data.allowed_attempts;
+    if (data.has_checklist !== undefined) fields.has_checklist = data.has_checklist;
+    if (data.lb_content !== undefined) fields.lb_content = data.lb_content;
+    if (data.course_id !== undefined) fields.course_id = data.course_id;
+    if (data.lesson_id !== undefined) fields.lesson_id = data.lesson_id;
+    if (data.topic_id !== undefined) fields.topic_id = data.topic_id;
+    fields.updated_at = new Date().toISOString();
+
+    if (Object.keys(fields).length > 1) {
+      const { error } = await supabase.from('quizzes').update(fields).eq('id', quizId);
+      if (error) throw error;
+    }
+  } catch (e) {
+    handleError(e, 'Failed to update quiz');
+  }
+}
+
+export async function deleteQuiz(quizId: number): Promise<void> {
+  assertConfigured();
+  try {
+    // Get topic_id before deleting for has_quiz check
+    const { data: quiz } = await supabase.from('quizzes').select('topic_id').eq('id', quizId).single();
+
+    // Delete associated questions first (soft delete)
+    await supabase.from('questions').delete().eq('quiz_id', quizId);
+
+    // Delete quiz attempts
+    await supabase.from('quiz_attempts').delete().eq('quiz_id', quizId);
+
+    const { error } = await supabase.from('quizzes').delete().eq('id', quizId);
+    if (error) throw error;
+
+    // Check if topic still has quizzes
+    if (quiz) {
+      const { count: remaining } = await supabase
+        .from('quizzes')
+        .select('id', { count: 'exact', head: true })
+        .eq('topic_id', quiz.topic_id);
+      if (remaining === 0) {
+        await supabase.from('topics').update({ has_quiz: false, updated_at: new Date().toISOString() }).eq('id', quiz.topic_id);
+      }
+    }
+  } catch (e) {
+    handleError(e, 'Failed to delete quiz');
+  }
+}
+
+// ─── Questions ───────────────────────────────────────────────────────────────
+
+export interface QuestionData {
+  id?: number;
+  slug?: string;
+  order: number;
+  title: string;
+  content: string;
+  answer_type: string;
+  required?: number;
+  options?: Record<string, unknown> | null;
+  correct_answer?: string | null;
+  table_structure?: Record<string, unknown> | null;
+}
+
+/** Bulk save questions for a quiz (create/update). Matches Laravel QuestionController::update() */
+export async function saveQuestions(quizId: number, questions: QuestionData[]): Promise<void> {
+  assertConfigured();
+  try {
+    const now = new Date().toISOString();
+
+    for (const q of questions) {
+      const slug = q.slug || q.title.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)/g, '');
+      const record = {
+        order: q.order,
+        required: q.required ?? 0,
+        title: q.title,
+        content: q.content,
+        answer_type: q.answer_type,
+        options: q.options ? (typeof q.options === 'string' ? q.options : JSON.stringify(q.options)) : null,
+        correct_answer: q.correct_answer || null,
+        table_structure: q.table_structure ? (typeof q.table_structure === 'string' ? q.table_structure : JSON.stringify(q.table_structure)) : null,
+        updated_at: now,
+      };
+
+      if (q.id) {
+        // Update existing question
+        const { error } = await supabase.from('questions').update(record).eq('id', q.id).eq('quiz_id', quizId);
+        if (error) throw error;
+      } else {
+        // Create new question
+        const { error } = await supabase.from('questions').insert({
+          ...record,
+          slug,
+          quiz_id: quizId,
+          created_at: now,
+        });
+        if (error) throw error;
+      }
+    }
+  } catch (e) {
+    handleError(e, 'Failed to save questions');
+  }
+}
+
+export async function deleteQuestion(questionId: number): Promise<void> {
+  assertConfigured();
+  try {
+    const { error } = await supabase.from('questions').delete().eq('id', questionId);
+    if (error) throw error;
+  } catch (e) {
+    handleError(e, 'Failed to delete question');
+  }
+}
+
+/** Fetch all questions for a quiz ordered by `order` */
+export async function fetchQuizQuestions(quizId: number): Promise<QuestionData[]> {
+  assertConfigured();
+  try {
+    const { data, error } = await supabase
+      .from('questions')
+      .select('*')
+      .eq('quiz_id', quizId)
+      .order('order', { ascending: true });
+    if (error) throw error;
+
+    return (data ?? []).map((q) => ({
+      id: q.id,
+      slug: q.slug,
+      order: q.order ?? 0,
+      title: q.title,
+      content: q.content,
+      answer_type: q.answer_type,
+      required: q.required,
+      options: typeof q.options === 'string' ? JSON.parse(q.options) : q.options,
+      correct_answer: q.correct_answer,
+      table_structure: typeof q.table_structure === 'string' ? JSON.parse(q.table_structure) : q.table_structure,
+    }));
+  } catch (e) {
+    handleError(e, 'Failed to fetch quiz questions');
+  }
+}
+
+// ─── Content Reordering ──────────────────────────────────────────────────────
+
+/** Reorder lessons within a course. Matches Laravel CourseController::reorder() */
+export async function reorderLessons(courseId: number, orderedIds: number[]): Promise<void> {
+  assertConfigured();
+  try {
+    for (let pos = 0; pos < orderedIds.length; pos++) {
+      const { error } = await supabase
+        .from('lessons')
+        .update({ order: pos })
+        .eq('id', orderedIds[pos])
+        .eq('course_id', courseId);
+      if (error) throw error;
+    }
+  } catch (e) {
+    handleError(e, 'Failed to reorder lessons');
+  }
+}
+
+/** Reorder topics within a lesson. Matches Laravel LessonController::reorder() */
+export async function reorderTopics(lessonId: number, orderedIds: number[]): Promise<void> {
+  assertConfigured();
+  try {
+    for (let pos = 0; pos < orderedIds.length; pos++) {
+      const { error } = await supabase
+        .from('topics')
+        .update({ order: pos })
+        .eq('id', orderedIds[pos])
+        .eq('lesson_id', lessonId);
+      if (error) throw error;
+    }
+  } catch (e) {
+    handleError(e, 'Failed to reorder topics');
+  }
+}
+
+/** Reorder quizzes within a topic. Matches Laravel TopicController::reorder() */
+export async function reorderQuizzes(topicId: number, orderedIds: number[]): Promise<void> {
+  assertConfigured();
+  try {
+    for (let pos = 0; pos < orderedIds.length; pos++) {
+      const { error } = await supabase
+        .from('quizzes')
+        .update({ order: pos })
+        .eq('id', orderedIds[pos])
+        .eq('topic_id', topicId);
+      if (error) throw error;
+    }
+  } catch (e) {
+    handleError(e, 'Failed to reorder quizzes');
+  }
+}
+
+/** Reorder questions within a quiz. Matches Laravel QuizController::reorder() */
+export async function reorderQuestions(quizId: number, orderedIds: number[]): Promise<void> {
+  assertConfigured();
+  try {
+    for (let pos = 0; pos < orderedIds.length; pos++) {
+      const { error } = await supabase
+        .from('questions')
+        .update({ order: pos })
+        .eq('id', orderedIds[pos])
+        .eq('quiz_id', quizId);
+      if (error) throw error;
+    }
+  } catch (e) {
+    handleError(e, 'Failed to reorder questions');
+  }
+}
+
+// ─── Featured Image Upload ───────────────────────────────────────────────────
+
+const IMAGEABLE_TYPES: Record<string, string> = {
+  course: 'App\\Models\\Course',
+  lesson: 'App\\Models\\Lesson',
+  topic: 'App\\Models\\Topic',
+  quiz: 'App\\Models\\Quiz',
+};
+
+/** Upload a featured image for a course/lesson/topic/quiz. Matches Laravel featuredImage() */
+export async function uploadFeaturedImage(
+  entityType: 'course' | 'lesson' | 'topic' | 'quiz',
+  entityId: number,
+  file: File,
+): Promise<{ url: string }> {
+  assertConfigured();
+  try {
+    const imageableType = IMAGEABLE_TYPES[entityType];
+    const ext = file.name.split('.').pop()?.toLowerCase() || 'jpg';
+    const filePath = `featured/${entityType}/${entityId}/${Date.now()}.${ext}`;
+
+    // Upload to Supabase Storage
+    const { error: uploadError } = await supabase.storage
+      .from('media')
+      .upload(filePath, file, { upsert: true });
+    if (uploadError) throw uploadError;
+
+    const { data: publicUrlData } = supabase.storage.from('media').getPublicUrl(filePath);
+
+    // Delete existing featured image record
+    await supabase
+      .from('images')
+      .delete()
+      .eq('imageable_type', imageableType)
+      .eq('imageable_id', entityId)
+      .eq('type', 'FEATURED');
+
+    // Create new image record
+    const now = new Date().toISOString();
+    const { error: dbError } = await supabase.from('images').insert({
+      type: 'FEATURED',
+      file_path: filePath,
+      imageable_type: imageableType,
+      imageable_id: entityId,
+      created_at: now,
+      updated_at: now,
+    });
+    if (dbError) throw dbError;
+
+    return { url: publicUrlData.publicUrl };
+  } catch (e) {
+    handleError(e, 'Failed to upload featured image');
+  }
+}
+
+/** Delete a featured image. Matches Laravel deleteImage() */
+export async function deleteFeaturedImage(
+  entityType: 'course' | 'lesson' | 'topic' | 'quiz',
+  entityId: number,
+): Promise<void> {
+  assertConfigured();
+  try {
+    const imageableType = IMAGEABLE_TYPES[entityType];
+
+    // Get existing image record
+    const { data: image } = await supabase
+      .from('images')
+      .select('id, file_path')
+      .eq('imageable_type', imageableType)
+      .eq('imageable_id', entityId)
+      .eq('type', 'FEATURED')
+      .maybeSingle();
+
+    if (image) {
+      // Delete from storage
+      await supabase.storage.from('media').remove([image.file_path]);
+      // Delete record
+      await supabase.from('images').delete().eq('id', image.id);
+    }
+  } catch (e) {
+    handleError(e, 'Failed to delete featured image');
+  }
+}
+
+/** Get the featured image URL for an entity */
+export async function getFeaturedImageUrl(
+  entityType: 'course' | 'lesson' | 'topic' | 'quiz',
+  entityId: number,
+): Promise<string | null> {
+  assertConfigured();
+  try {
+    const imageableType = IMAGEABLE_TYPES[entityType];
+    const { data: image } = await supabase
+      .from('images')
+      .select('file_path')
+      .eq('imageable_type', imageableType)
+      .eq('imageable_id', entityId)
+      .eq('type', 'FEATURED')
+      .maybeSingle();
+
+    if (!image) return null;
+    const { data: publicUrlData } = supabase.storage.from('media').getPublicUrl(image.file_path);
+    return publicUrlData.publicUrl;
+  } catch (e) {
+    return null;
+  }
+}
+
+// ─── Lesson Detail Fetch (for drill-down) ────────────────────────────────────
+
+export interface LessonFullDetail {
+  id: number;
+  title: string;
+  slug: string;
+  course_id: number;
+  course_title: string;
+  order: number;
+  release_key: string;
+  release_value: string | null;
+  has_work_placement: number;
+  has_topic: number;
+  lb_content: string | null;
+  created_at: string | null;
+  topics: {
+    id: number;
+    title: string;
+    slug: string;
+    order: number;
+    estimated_time: number;
+    has_quiz: number;
+    quizzes_count: number;
+  }[];
+}
+
+export async function fetchLessonFullDetail(lessonId: number): Promise<LessonFullDetail | null> {
+  assertConfigured();
+  try {
+    const [lessonResult, topicsResult] = await Promise.all([
+      supabase.from('lessons').select('*, courses!inner(title)').eq('id', lessonId).single(),
+      supabase.from('topics').select('*').eq('lesson_id', lessonId).order('order', { ascending: true }),
+    ]);
+    if (lessonResult.error || !lessonResult.data) return null;
+    const lesson = lessonResult.data;
+    const topics = topicsResult.data ?? [];
+
+    // Count quizzes per topic
+    const topicIds = topics.map((t: { id: number }) => t.id);
+    let quizCounts: Record<number, number> = {};
+    if (topicIds.length > 0) {
+      const { data: quizzes } = await supabase
+        .from('quizzes')
+        .select('id, topic_id')
+        .in('topic_id', topicIds);
+      if (quizzes) {
+        for (const q of quizzes) {
+          quizCounts[q.topic_id] = (quizCounts[q.topic_id] || 0) + 1;
+        }
+      }
+    }
+
+    return {
+      id: lesson.id,
+      title: lesson.title,
+      slug: lesson.slug,
+      course_id: lesson.course_id,
+      course_title: (lesson as any).courses?.title ?? '',
+      order: lesson.order,
+      release_key: lesson.release_key,
+      release_value: lesson.release_value,
+      has_work_placement: lesson.has_work_placement,
+      has_topic: lesson.has_topic ? 1 : 0,
+      lb_content: lesson.lb_content,
+      created_at: lesson.created_at,
+      topics: topics.map((t: any) => ({
+        id: t.id,
+        title: t.title,
+        slug: t.slug,
+        order: t.order ?? 0,
+        estimated_time: t.estimated_time ?? 0,
+        has_quiz: t.has_quiz ? 1 : 0,
+        quizzes_count: quizCounts[t.id] || 0,
+      })),
+    };
+  } catch (e) {
+    handleError(e, 'Failed to fetch lesson detail');
+  }
+}
+
+// ─── Topic Detail Fetch (for drill-down) ─────────────────────────────────────
+
+export interface TopicFullDetail {
+  id: number;
+  title: string;
+  slug: string;
+  course_id: number;
+  lesson_id: number;
+  lesson_title: string;
+  order: number;
+  estimated_time: number;
+  has_quiz: number;
+  lb_content: string | null;
+  created_at: string | null;
+  quizzes: {
+    id: number;
+    title: string;
+    slug: string;
+    order: number;
+    estimated_time: number;
+    passing_percentage: number;
+    allowed_attempts: number;
+    has_checklist: number;
+    questions_count: number;
+  }[];
+}
+
+export async function fetchTopicFullDetail(topicId: number): Promise<TopicFullDetail | null> {
+  assertConfigured();
+  try {
+    const [topicResult, quizzesResult] = await Promise.all([
+      supabase.from('topics').select('*, lessons!inner(title)').eq('id', topicId).single(),
+      supabase.from('quizzes').select('*').eq('topic_id', topicId).order('order', { ascending: true }),
+    ]);
+    if (topicResult.error || !topicResult.data) return null;
+    const topic = topicResult.data;
+    const quizzes = quizzesResult.data ?? [];
+
+    // Count questions per quiz
+    const quizIds = quizzes.map((q: { id: number }) => q.id);
+    let questionCounts: Record<number, number> = {};
+    if (quizIds.length > 0) {
+      const { data: questions } = await supabase
+        .from('questions')
+        .select('id, quiz_id')
+        .in('quiz_id', quizIds);
+      if (questions) {
+        for (const q of questions) {
+          questionCounts[q.quiz_id] = (questionCounts[q.quiz_id] || 0) + 1;
+        }
+      }
+    }
+
+    return {
+      id: topic.id,
+      title: topic.title,
+      slug: topic.slug,
+      course_id: topic.course_id,
+      lesson_id: topic.lesson_id,
+      lesson_title: (topic as any).lessons?.title ?? '',
+      order: topic.order ?? 0,
+      estimated_time: topic.estimated_time ?? 0,
+      has_quiz: topic.has_quiz ? 1 : 0,
+      lb_content: topic.lb_content,
+      created_at: topic.created_at,
+      quizzes: quizzes.map((q: any) => ({
+        id: q.id,
+        title: q.title,
+        slug: q.slug,
+        order: q.order ?? 0,
+        estimated_time: q.estimated_time ?? 0,
+        passing_percentage: q.passing_percentage ?? 0,
+        allowed_attempts: q.allowed_attempts ?? 999,
+        has_checklist: q.has_checklist ?? 0,
+        questions_count: questionCounts[q.id] || 0,
+      })),
+    };
+  } catch (e) {
+    handleError(e, 'Failed to fetch topic detail');
+  }
+}
+
 // ─── Assessments (Evaluations + Quiz Attempts) ──────────────────────────────
 
 export interface AssessmentSummary {
@@ -1817,6 +2477,14 @@ export async function fetchQuizAttemptFullReview(attemptId: number): Promise<Qui
       .single();
     if (error || !attempt) return null;
 
+    // Transition SUBMITTED → REVIEWING on open (matching Laravel AssessmentsController::show())
+    if (attempt.status === 'SUBMITTED') {
+      await supabase.from('quiz_attempts')
+        .update({ status: 'REVIEWING', updated_at: new Date().toISOString() })
+        .eq('id', attemptId);
+      attempt.status = 'REVIEWING';
+    }
+
     // Parse JSON fields
     let questions: QuizQuestion[] = [];
     try {
@@ -1991,6 +2659,11 @@ export async function evaluateQuestion(
   }
 }
 
+// LLN/PTR config constants
+const LLN_QUIZ_ID = 11111;
+const LLN_LESSON_ID = 11111;
+const PTR_LESSON_ID = 11112;
+
 export async function submitAssessmentFeedback(
   attemptId: number,
   quizId: number,
@@ -1998,64 +2671,354 @@ export async function submitAssessmentFeedback(
   evaluatorId: number,
   feedbackMessage: string,
   overallStatus: 'SATISFACTORY' | 'FAIL',
-): Promise<void> {
+  assisted?: boolean,
+): Promise<{ autoReturned: boolean }> {
   assertConfigured();
   try {
+    const now = new Date().toISOString();
+
+    // Fetch attempt details for competency/notification logic
+    const { data: attempt } = await supabase
+      .from('quiz_attempts')
+      .select('id, user_id, quiz_id, course_id, lesson_id, topic_id')
+      .eq('id', attemptId)
+      .single();
+    if (!attempt) throw new Error('Attempt not found');
+
     // Get latest evaluation
     const { data: evaluation } = await supabase
       .from('evaluations')
-      .select('id')
+      .select('id, results, status')
       .eq('evaluable_type', 'App\\Models\\QuizAttempt')
       .eq('evaluable_id', attemptId)
       .order('id', { ascending: false })
       .limit(1)
       .maybeSingle();
 
-    // Update evaluation status
-    if (evaluation) {
-      await supabase
-        .from('evaluations')
-        .update({ status: overallStatus === 'SATISFACTORY' ? 'SATISFACTORY' : 'UNSATISFACTORY' })
-        .eq('id', evaluation.id);
+    // Check if evaluation is already complete (has status) — if so, create a new one with carried-forward results
+    const evalStatus = overallStatus === 'SATISFACTORY' ? 'SATISFACTORY' : 'UNSATISFACTORY';
+    if (evaluation && evaluation.status) {
+      // Already marked — create new evaluation with carried-forward results
+      await supabase.from('evaluations').insert({
+        evaluable_type: 'App\\Models\\QuizAttempt',
+        evaluable_id: attemptId,
+        results: typeof evaluation.results === 'string' ? evaluation.results : JSON.stringify(evaluation.results ?? {}),
+        student_id: studentId,
+        evaluator_id: evaluatorId,
+        status: evalStatus,
+        created_at: now,
+        updated_at: now,
+      });
+    } else if (evaluation) {
+      // Not yet marked — update existing
+      await supabase.from('evaluations').update({
+        status: evalStatus,
+        evaluator_id: evaluatorId,
+        updated_at: now,
+      }).eq('id', evaluation.id);
     }
 
     // Create feedback
-    await supabase
-      .from('feedbacks')
-      .insert({
-        attachable_type: 'App\\Models\\Quiz',
-        attachable_id: quizId,
-        body: { message: feedbackMessage, evaluation_id: evaluation?.id, attempt_id: attemptId },
-        user_id: studentId,
-        owner_id: evaluatorId,
-      });
+    await supabase.from('feedbacks').insert({
+      attachable_type: 'App\\Models\\Quiz',
+      attachable_id: quizId,
+      body: JSON.stringify({ message: feedbackMessage, evaluation_id: evaluation?.id, attempt_id: attemptId }),
+      user_id: studentId,
+      owner_id: evaluatorId,
+      created_at: now,
+      updated_at: now,
+    });
 
     // Update quiz attempt status
-    await supabase
-      .from('quiz_attempts')
-      .update({
-        status: overallStatus,
-        accessor_id: evaluatorId,
-        accessed_at: new Date().toISOString(),
-        is_valid_accessor: 1,
-      })
-      .eq('id', attemptId);
+    await supabase.from('quiz_attempts').update({
+      status: overallStatus,
+      assisted: assisted ? 1 : 0,
+      accessor_id: evaluatorId,
+      accessed_at: now,
+      is_valid_accessor: 1,
+      updated_at: now,
+    }).eq('id', attemptId);
+
+    // Determine assessment type for notification/competency logic
+    const isLlnQuiz = attempt.quiz_id === LLN_QUIZ_ID;
+    const isPreCourse = await checkIsPreCourseAssessment(attempt.lesson_id, attempt.course_id);
+
+    // ─── Notification + competency logic (matching Laravel feedbackPost) ───
+    if (isLlnQuiz) {
+      // LLN quiz → NewLLNDMarked notification
+      await createAssessmentNotification(studentId, evaluatorId, attemptId, 'App\\Notifications\\NewLLNDMarked');
+
+      // If SATISFACTORY + assisted, create a note
+      if (overallStatus === 'SATISFACTORY' && assisted) {
+        const noteBody = '<p>The trainer has marked the LLND activity as satisfactory, with <strong>assistance required</strong>.</p>' +
+          '<p>An email notification has been sent to the student advising them to <strong>reach out for help</strong> with the course when needed.</p>';
+        await supabase.from('notes').insert({
+          user_id: 0,
+          subject_type: 'App\\Models\\User',
+          subject_id: studentId,
+          note_body: noteBody,
+          is_pinned: 0,
+          created_at: now,
+          updated_at: now,
+        });
+      }
+    } else if (isPreCourse) {
+      // Pre-course assessment → PreCourseAssessmentMarked notification
+      await createAssessmentNotification(studentId, evaluatorId, attemptId, 'App\\Notifications\\PreCourseAssessmentMarked');
+    } else {
+      // Regular assessment
+      if (overallStatus !== 'SATISFACTORY') {
+        // Auto-return to student on FAIL
+        await supabase.from('quiz_attempts').update({ status: 'RETURNED', updated_at: now }).eq('id', attemptId);
+        await createAssessmentNotification(studentId, evaluatorId, attemptId, 'App\\Notifications\\AssessmentReturned');
+        return { autoReturned: true };
+      }
+
+      // SATISFACTORY → AssessmentMarked notification + competency
+      await createAssessmentNotification(studentId, evaluatorId, attemptId, 'App\\Notifications\\AssessmentMarked');
+      await checkAndAddCompetency(studentId, attempt.lesson_id, attempt.course_id);
+    }
+
+    return { autoReturned: false };
   } catch (e) {
     handleError(e, 'Failed to submit assessment feedback');
   }
 }
 
-export async function returnAssessment(attemptId: number): Promise<void> {
+export async function returnAssessment(attemptId: number, evaluatorId?: number): Promise<void> {
   assertConfigured();
   try {
+    const now = new Date().toISOString();
+
+    // Get attempt to find student
+    const { data: attempt } = await supabase
+      .from('quiz_attempts')
+      .select('id, user_id')
+      .eq('id', attemptId)
+      .single();
+
     const { error } = await supabase
       .from('quiz_attempts')
-      .update({ status: 'RETURNED' })
+      .update({ status: 'RETURNED', updated_at: now })
       .eq('id', attemptId);
     if (error) throw error;
+
+    // Create AssessmentReturned notification
+    if (attempt) {
+      await createAssessmentNotification(
+        attempt.user_id,
+        evaluatorId ?? 0,
+        attemptId,
+        'App\\Notifications\\AssessmentReturned',
+      );
+    }
   } catch (e) {
     handleError(e, 'Failed to return assessment');
   }
+}
+
+/**
+ * Email assessment results to a student.
+ * Matches Laravel AssessmentsController::emailPost().
+ */
+export async function emailAssessment(attemptId: number, evaluatorId: number): Promise<void> {
+  assertConfigured();
+  try {
+    const { data: attempt } = await supabase
+      .from('quiz_attempts')
+      .select('id, user_id')
+      .eq('id', attemptId)
+      .single();
+    if (!attempt) throw new Error('Attempt not found');
+
+    await createAssessmentNotification(
+      attempt.user_id,
+      evaluatorId,
+      attemptId,
+      'App\\Notifications\\AssessmentEmailed',
+    );
+  } catch (e) {
+    handleError(e, 'Failed to email assessment');
+  }
+}
+
+/**
+ * Create a notification record in the notifications table.
+ * Matches Laravel's database notification channel.
+ */
+async function createAssessmentNotification(
+  studentId: number,
+  evaluatorId: number,
+  attemptId: number,
+  notificationType: string,
+): Promise<void> {
+  const now = new Date().toISOString();
+  // Generate UUID-like ID for notification
+  const id = crypto.randomUUID();
+  await supabase.from('notifications').insert({
+    id,
+    type: notificationType,
+    notifiable_type: 'App\\Models\\User',
+    notifiable_id: studentId,
+    data: JSON.stringify({ student: studentId, evaluator: evaluatorId, assessment: attemptId }),
+    created_at: now,
+    updated_at: now,
+  });
+}
+
+/**
+ * Check if a lesson is a pre-course assessment (order = 0, not Semester 2).
+ * Matches Laravel's isPreCourseAssessment check.
+ */
+async function checkIsPreCourseAssessment(lessonId: number, courseId: number): Promise<boolean> {
+  const { data: lesson } = await supabase
+    .from('lessons')
+    .select('id, "order", course_id')
+    .eq('id', lessonId)
+    .eq('course_id', courseId)
+    .eq('order', 0)
+    .maybeSingle();
+
+  if (!lesson) return false;
+
+  // Check course title doesn't contain "Semester 2"
+  const { data: course } = await supabase
+    .from('courses')
+    .select('title')
+    .eq('id', courseId)
+    .single();
+
+  if (!course) return false;
+  return !course.title.toLowerCase().includes('semester 2');
+}
+
+/**
+ * Check if all quizzes in a lesson are satisfactory, checklists complete,
+ * and work placement done — then add/update competency.
+ * Matches Laravel StudentCourseService::addCompetency() + competencyCheck().
+ */
+async function checkAndAddCompetency(
+  userId: number,
+  lessonId: number,
+  courseId: number,
+): Promise<void> {
+  // Skip LLN and PTR lessons
+  if (lessonId === LLN_LESSON_ID || lessonId === PTR_LESSON_ID) return;
+
+  // Check lesson completion: all quizzes in the lesson must be SATISFACTORY
+  const { data: quizzes } = await supabase
+    .from('quizzes')
+    .select('id, has_checklist')
+    .eq('lesson_id', lessonId);
+
+  if (!quizzes || quizzes.length === 0) return;
+
+  // For each quiz, check if the latest attempt is SATISFACTORY
+  for (const quiz of quizzes) {
+    const { data: latestAttempt } = await supabase
+      .from('quiz_attempts')
+      .select('id, status')
+      .eq('quiz_id', quiz.id)
+      .eq('user_id', userId)
+      .is('deleted_at', null)
+      .order('id', { ascending: false })
+      .limit(1)
+      .maybeSingle();
+
+    if (!latestAttempt || latestAttempt.status !== 'SATISFACTORY') return;
+  }
+
+  // Check checklists complete (quizzes with has_checklist=1 must have a matching CHECKLIST event)
+  const checklistQuizzes = quizzes.filter(q => q.has_checklist === 1);
+  if (checklistQuizzes.length > 0) {
+    for (const cq of checklistQuizzes) {
+      const { data: checklist } = await supabase
+        .from('student_lms_attachables')
+        .select('id, properties')
+        .eq('event', 'CHECKLIST')
+        .eq('attachable_type', 'App\\Models\\Quiz')
+        .eq('attachable_id', cq.id)
+        .eq('student_id', userId)
+        .order('id', { ascending: false })
+        .limit(1)
+        .maybeSingle();
+
+      if (!checklist) return;
+      const props = typeof checklist.properties === 'string'
+        ? JSON.parse(checklist.properties) : checklist.properties;
+      if (props?.status === 'NOT SATISFACTORY') return;
+    }
+  }
+
+  // Check work placement complete
+  const { data: lesson } = await supabase
+    .from('lessons')
+    .select('id, has_work_placement')
+    .eq('id', lessonId)
+    .single();
+
+  if (lesson?.has_work_placement) {
+    const { data: wp } = await supabase
+      .from('student_lms_attachables')
+      .select('id')
+      .eq('event', 'WORK_PLACEMENT')
+      .eq('attachable_type', 'App\\Models\\Lesson')
+      .eq('attachable_id', lessonId)
+      .eq('student_id', userId)
+      .limit(1)
+      .maybeSingle();
+
+    if (!wp) return;
+  }
+
+  // All checks passed — upsert competency
+  const now = new Date().toISOString();
+
+  // Get course start date from enrolment
+  const { data: enrolment } = await supabase
+    .from('student_course_enrolments')
+    .select('course_start_at')
+    .eq('user_id', userId)
+    .eq('course_id', courseId)
+    .limit(1)
+    .maybeSingle();
+
+  // Get lesson start/end dates from quiz attempts
+  const { data: firstAttempt } = await supabase
+    .from('quiz_attempts')
+    .select('submitted_at, created_at')
+    .eq('user_id', userId)
+    .eq('lesson_id', lessonId)
+    .order('created_at', { ascending: true })
+    .limit(1)
+    .maybeSingle();
+
+  const { data: lastAttempt } = await supabase
+    .from('quiz_attempts')
+    .select('accessed_at, submitted_at')
+    .eq('user_id', userId)
+    .eq('lesson_id', lessonId)
+    .order('accessed_at', { ascending: false })
+    .limit(1)
+    .maybeSingle();
+
+  const lessonStart = firstAttempt?.submitted_at ?? firstAttempt?.created_at ?? now;
+  const lessonEnd = lastAttempt?.accessed_at ?? lastAttempt?.submitted_at ?? now;
+
+  await supabase.from('competencies').upsert({
+    user_id: userId,
+    lesson_id: lessonId,
+    course_id: courseId,
+    is_competent: 1,
+    course_start: enrolment?.course_start_at ?? now,
+    lesson_start: lessonStart.substring(0, 10),
+    lesson_end: lessonEnd.substring(0, 10),
+    param: JSON.stringify({
+      last_attempt_end_date: lastAttempt?.accessed_at ?? null,
+      checklist_end_date: null,
+    }),
+    updated_at: now,
+  }, { onConflict: 'user_id,lesson_id,course_id' });
 }
 
 // ─── Generic Report Builder ───────────────────────────────────────────────────

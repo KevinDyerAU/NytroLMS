@@ -10,27 +10,52 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { StatusBadge } from './StatusBadge';
 import { AddLessonDialog } from './AddLessonDialog';
 import { EditLessonDialog } from './EditLessonDialog';
-import { fetchCourseFullDetail, deleteLesson, type CourseFullDetail as CourseFullDetailType } from '@/lib/api';
+import { FeaturedImageUpload } from './FeaturedImageUpload';
+import { fetchCourseFullDetail, deleteLesson, reorderLessons, type CourseFullDetail as CourseFullDetailType } from '@/lib/api';
 import type { DbLesson } from '@/lib/types';
 import { toast } from 'sonner';
 import {
   ArrowLeft, Edit, BookOpen, Users, Clock, Calendar, Eye,
   FileText, Layers, Loader2, Hash, Plus, Trash2, Pencil,
+  ArrowUp, ArrowDown, GripVertical,
 } from 'lucide-react';
 
 interface CourseDetailProps {
   courseId: number;
   onBack: () => void;
   onEdit: (courseId: number) => void;
+  onOpenLesson?: (lessonId: number) => void;
 }
 
-export function CourseDetail({ courseId, onBack, onEdit }: CourseDetailProps) {
+export function CourseDetail({ courseId, onBack, onEdit, onOpenLesson }: CourseDetailProps) {
   const [course, setCourse] = useState<CourseFullDetailType | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [addLessonOpen, setAddLessonOpen] = useState(false);
   const [editLesson, setEditLesson] = useState<(DbLesson & { topics_count: number }) | null>(null);
   const [deletingLessonId, setDeletingLessonId] = useState<number | null>(null);
+  const [reordering, setReordering] = useState(false);
+
+  const handleReorderLesson = async (fromIdx: number, direction: 'up' | 'down') => {
+    if (!course) return;
+    const toIdx = direction === 'up' ? fromIdx - 1 : fromIdx + 1;
+    if (toIdx < 0 || toIdx >= course.lessons.length) return;
+
+    const newLessons = [...course.lessons];
+    [newLessons[fromIdx], newLessons[toIdx]] = [newLessons[toIdx], newLessons[fromIdx]];
+    setCourse({ ...course, lessons: newLessons });
+
+    setReordering(true);
+    try {
+      await reorderLessons(courseId, newLessons.map(l => l.id));
+      toast.success('Lessons reordered');
+    } catch {
+      toast.error('Failed to reorder');
+      loadCourse();
+    } finally {
+      setReordering(false);
+    }
+  };
 
   const loadCourse = useCallback(async () => {
     setLoading(true);
@@ -161,8 +186,9 @@ export function CourseDetail({ courseId, onBack, onEdit }: CourseDetailProps) {
               </Card>
             </div>
 
-            {/* Quick Lesson List */}
-            <div>
+            {/* Featured Image + Quick Lesson List */}
+            <div className="space-y-4">
+              <FeaturedImageUpload entityType="course" entityId={courseId} />
               <Card>
                 <CardHeader className="pb-3">
                   <CardTitle className="text-base text-[#3b82f6]">Lessons</CardTitle>
@@ -212,16 +238,23 @@ export function CourseDetail({ courseId, onBack, onEdit }: CourseDetailProps) {
                   {course.lessons.map((lesson, idx) => (
                     <div key={lesson.id} className="border border-[#e2e8f0] rounded-lg p-4 hover:border-[#3b82f6]/30 transition-colors">
                       <div className="flex items-start justify-between">
-                        <div className="flex items-start gap-3">
-                          <div className="w-8 h-8 rounded-lg bg-[#eff6ff] flex items-center justify-center flex-shrink-0">
-                            <span className="text-sm font-semibold text-[#3b82f6]">{idx + 1}</span>
+                        <button
+                          type="button"
+                          className="flex items-start gap-3 text-left flex-1 min-w-0 cursor-pointer hover:opacity-80"
+                          onClick={() => onOpenLesson?.(lesson.id)}
+                        >
+                          <div className="flex items-center gap-1 flex-shrink-0">
+                            <GripVertical className="w-4 h-4 text-[#cbd5e1]" />
+                            <div className="w-8 h-8 rounded-lg bg-[#eff6ff] flex items-center justify-center">
+                              <span className="text-sm font-semibold text-[#3b82f6]">{idx + 1}</span>
+                            </div>
                           </div>
                           <div>
                             <h4 className="font-medium text-[#1e293b]">{lesson.title}</h4>
                             <p className="text-xs text-[#94a3b8] mt-0.5">{lesson.slug}</p>
                           </div>
-                        </div>
-                        <div className="flex items-center gap-2">
+                        </button>
+                        <div className="flex items-center gap-1">
                           <Badge variant="outline" className="text-xs">
                             {lesson.topics_count} topics
                           </Badge>
@@ -229,6 +262,16 @@ export function CourseDetail({ courseId, onBack, onEdit }: CourseDetailProps) {
                             <Badge variant="outline" className="text-xs text-amber-600 border-amber-200">
                               Work Placement
                             </Badge>
+                          )}
+                          {course.lessons.length > 1 && (
+                            <>
+                              <Button variant="ghost" size="sm" className="h-7 w-7 p-0" disabled={idx === 0 || reordering} onClick={() => handleReorderLesson(idx, 'up')}>
+                                <ArrowUp className="w-3.5 h-3.5" />
+                              </Button>
+                              <Button variant="ghost" size="sm" className="h-7 w-7 p-0" disabled={idx === course.lessons.length - 1 || reordering} onClick={() => handleReorderLesson(idx, 'down')}>
+                                <ArrowDown className="w-3.5 h-3.5" />
+                              </Button>
+                            </>
                           )}
                           <Button
                             variant="ghost"

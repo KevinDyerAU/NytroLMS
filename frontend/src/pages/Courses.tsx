@@ -6,6 +6,9 @@ import { useState } from 'react';
 import { DashboardLayout } from '../components/DashboardLayout';
 import { StatusBadge } from '../components/StatusBadge';
 import { CourseDetail } from '../components/CourseDetail';
+import { LessonDetail } from '../components/LessonDetail';
+import { TopicDetail } from '../components/TopicDetail';
+import { QuizQuestionEditor } from '../components/QuizQuestionEditor';
 import { AddCourseDialog } from '../components/AddCourseDialog';
 import { EditCourseDialog } from '../components/EditCourseDialog';
 import { useSupabaseQuery } from '@/hooks/useSupabaseQuery';
@@ -21,11 +24,18 @@ import {
 import { cn } from '@/lib/utils';
 import { toast } from 'sonner';
 
+type DrillView =
+  | { type: 'course'; courseId: number }
+  | { type: 'lesson'; courseId: number; lessonId: number }
+  | { type: 'topic'; courseId: number; lessonId: number; topicId: number }
+  | { type: 'quiz'; courseId: number; lessonId: number; topicId: number; quizId: number; quizTitle: string };
+
 export default function Courses() {
   const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState('all');
   const [viewMode, setViewMode] = useState<'grid' | 'list'>('grid');
   const [selectedCourseId, setSelectedCourseId] = useState<number | null>(null);
+  const [drillView, setDrillView] = useState<DrillView | null>(null);
   const [addDialogOpen, setAddDialogOpen] = useState(false);
   const [editCourseId, setEditCourseId] = useState<number | null>(null);
 
@@ -36,6 +46,49 @@ export default function Courses() {
 
   const courses = data?.data ?? [];
 
+  // ─── Drill-down views ───
+  if (drillView) {
+    let content: React.ReactNode = null;
+
+    if (drillView.type === 'quiz') {
+      content = (
+        <QuizQuestionEditor
+          quizId={drillView.quizId}
+          quizTitle={drillView.quizTitle}
+          onBack={() => setDrillView({ type: 'topic', courseId: drillView.courseId, lessonId: drillView.lessonId, topicId: drillView.topicId })}
+        />
+      );
+    } else if (drillView.type === 'topic') {
+      content = (
+        <TopicDetail
+          topicId={drillView.topicId}
+          courseId={drillView.courseId}
+          lessonId={drillView.lessonId}
+          onBack={() => setDrillView({ type: 'lesson', courseId: drillView.courseId, lessonId: drillView.lessonId })}
+          onOpenQuiz={(quizId) => {
+            // Need quiz title — fetch it from topic detail's quizzes list
+            setDrillView({ type: 'quiz', courseId: drillView.courseId, lessonId: drillView.lessonId, topicId: drillView.topicId, quizId, quizTitle: `Quiz #${quizId}` });
+          }}
+        />
+      );
+    } else if (drillView.type === 'lesson') {
+      content = (
+        <LessonDetail
+          lessonId={drillView.lessonId}
+          courseId={drillView.courseId}
+          onBack={() => { setDrillView(null); setSelectedCourseId(drillView.courseId); }}
+          onOpenTopic={(topicId) => setDrillView({ type: 'topic', courseId: drillView.courseId, lessonId: drillView.lessonId, topicId })}
+        />
+      );
+    }
+
+    return (
+      <DashboardLayout title="Courses" subtitle="Manage training courses and qualifications">
+        {content}
+      </DashboardLayout>
+    );
+  }
+
   if (selectedCourseId !== null) {
     return (
       <DashboardLayout title="Courses" subtitle="Manage training courses and qualifications">
@@ -43,6 +96,7 @@ export default function Courses() {
           courseId={selectedCourseId}
           onBack={() => setSelectedCourseId(null)}
           onEdit={(id) => setEditCourseId(id)}
+          onOpenLesson={(lessonId) => setDrillView({ type: 'lesson', courseId: selectedCourseId, lessonId })}
         />
         {editCourseId !== null && (
           <EditCourseDialog
