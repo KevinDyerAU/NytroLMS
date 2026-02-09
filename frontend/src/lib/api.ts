@@ -2294,6 +2294,315 @@ export async function fetchCompanyFullDetail(companyId: number): Promise<Company
   }
 }
 
+// ─── Signup Link Management ──────────────────────────────────────────────────
+
+/** Create a signup link for a company. Matches Laravel CompanyController::signupLink() */
+export async function createSignupLink(data: {
+  company_id: number;
+  leader_id: number;
+  course_id: number;
+  creator_id: number;
+  is_chargeable?: boolean;
+}): Promise<{ id: number; key: string }> {
+  assertConfigured();
+  try {
+    // Check for existing link with same company + course
+    const { data: existing } = await supabase
+      .from('signup_links')
+      .select('id')
+      .eq('company_id', data.company_id)
+      .eq('course_id', data.course_id)
+      .maybeSingle();
+    if (existing) {
+      throw new Error('A signup link for this course already exists for this company.');
+    }
+
+    const key = crypto.randomUUID();
+    const now = new Date().toISOString();
+    const { data: link, error } = await supabase
+      .from('signup_links')
+      .insert({
+        company_id: data.company_id,
+        leader_id: data.leader_id,
+        course_id: data.course_id,
+        creator_id: data.creator_id,
+        key,
+        is_active: 1,
+        is_chargeable: data.is_chargeable ? 1 : 0,
+        created_at: now,
+        updated_at: now,
+      })
+      .select('id, key')
+      .single();
+    if (error) throw error;
+    return { id: link.id, key: link.key };
+  } catch (e) {
+    handleError(e, 'Failed to create signup link');
+  }
+}
+
+/** Delete a signup link. Matches Laravel CompanyController::deleteLink() */
+export async function deleteSignupLink(linkId: number): Promise<void> {
+  assertConfigured();
+  try {
+    const { error } = await supabase.from('signup_links').delete().eq('id', linkId);
+    if (error) throw error;
+  } catch (e) {
+    handleError(e, 'Failed to delete signup link');
+  }
+}
+
+/** Toggle a signup link active/inactive */
+export async function toggleSignupLinkActive(linkId: number, isActive: boolean): Promise<void> {
+  assertConfigured();
+  try {
+    const { error } = await supabase
+      .from('signup_links')
+      .update({ is_active: isActive ? 1 : 0, updated_at: new Date().toISOString() })
+      .eq('id', linkId);
+    if (error) throw error;
+  } catch (e) {
+    handleError(e, 'Failed to update signup link');
+  }
+}
+
+/** Fetch a signup link by its UUID key (public, no auth required) */
+export async function fetchSignupLinkByKey(key: string): Promise<{
+  id: number;
+  key: string;
+  company_id: number;
+  company_name: string;
+  leader_id: number;
+  course_id: number;
+  course_title: string;
+  is_active: number;
+  is_chargeable: number;
+} | null> {
+  assertConfigured();
+  try {
+    const { data: link, error } = await supabase
+      .from('signup_links')
+      .select('*')
+      .eq('key', key)
+      .maybeSingle();
+    if (error || !link) return null;
+    if (!link.is_active) return null;
+
+    // Fetch company and course names
+    const [companyResult, courseResult] = await Promise.all([
+      supabase.from('companies').select('name').eq('id', link.company_id).single(),
+      supabase.from('courses').select('title').eq('id', link.course_id).single(),
+    ]);
+
+    return {
+      id: link.id,
+      key: link.key,
+      company_id: link.company_id,
+      company_name: companyResult.data?.name ?? 'Unknown',
+      leader_id: link.leader_id,
+      course_id: link.course_id,
+      course_title: courseResult.data?.title ?? 'Unknown',
+      is_active: link.is_active,
+      is_chargeable: link.is_chargeable,
+    };
+  } catch (e) {
+    return null;
+  }
+}
+
+/** Register a student via signup link. Matches Laravel SignupController::store() */
+export async function registerViaSignupLink(data: {
+  signup_link_key: string;
+  first_name: string;
+  last_name: string;
+  email: string;
+  phone: string;
+  timezone: string;
+  password: string;
+}): Promise<{ success: boolean; message: string }> {
+  assertConfigured();
+  try {
+    // 1. Validate signup link
+    const { data: link } = await supabase
+      .from('signup_links')
+      .select('*')
+      .eq('key', data.signup_link_key)
+      .single();
+    if (!link || !link.is_active) {
+      throw new Error('Invalid or inactive signup link.');
+    }
+
+    // 2. Create Supabase Auth user
+    const { data: authData, error: authError } = await supabase.auth.signUp({
+      email: data.email,
+      password: data.password,
+      options: {
+        data: {
+          first_name: data.first_name,
+          last_name: data.last_name,
+          role: 'Student',
+        },
+      },
+    });
+    if (authError) throw authError;
+    if (!authData.user) throw new Error('Failed to create account.');
+
+    const userId = parseInt(authData.user.id, 10) || 0;
+    // For Supabase Auth, the user record in public.users should be created by a trigger.
+    // We need to wait a moment then set up the profile data.
+
+    // 3. Check if user record exists in public.users (created by trigger)
+    // The users table is linked to auth.users — try to find the record
+    const { data: existingUser } = await supabase
+      .from('users')
+      .select('id')
+      .eq('email', data.email)
+      .maybeSingle();
+
+    const studentId = existingUser?.id;
+    if (!studentId) {
+      return { success: true, message: 'Account created. Please log in to complete setup.' };
+    }
+
+    // 4. Create user_details record
+    const now = new Date().toISOString();
+    await supabase.from('user_details').upsert({
+      user_id: studentId,
+      phone: data.phone,
+      timezone: data.timezone,
+      language: 'en',
+      signup_links_id: link.id,
+      signup_through_link: 1,
+      purchase_order: 'N/A',
+      status: 'ENROLLED',
+      created_at: now,
+      updated_at: now,
+    }, { onConflict: 'user_id' });
+
+    // 5. Assign Student role
+    const { data: studentRole } = await supabase
+      .from('roles')
+      .select('id')
+      .eq('name', 'Student')
+      .single();
+    if (studentRole) {
+      await supabase.from('model_has_roles').upsert({
+        role_id: studentRole.id,
+        model_type: 'App\\Models\\User',
+        model_id: studentId,
+      }, { onConflict: 'role_id,model_id,model_type' });
+    }
+
+    // 6. Link student to company and leader via user_has_attachables
+    await supabase.from('user_has_attachables').insert([
+      { user_id: studentId, attachable_type: 'App\\Models\\Company', attachable_id: link.company_id },
+      { user_id: studentId, attachable_type: 'App\\Models\\Leader', attachable_id: link.leader_id },
+    ]);
+
+    // 7. Create basic enrolment record
+    await supabase.from('enrolments').insert({
+      user_id: studentId,
+      enrolment_key: 'basic',
+      enrolment_value: JSON.stringify({ schedule: 'Not Applicable', employment_service: 'Other' }),
+      is_active: 1,
+      created_at: now,
+      updated_at: now,
+    });
+
+    // 8. Enrol student in the course (matching assign_course_on_create)
+    const { data: course } = await supabase
+      .from('courses')
+      .select('id, title, course_length_days, version, auto_register_next_course, next_course, next_course_after_days')
+      .eq('id', link.course_id)
+      .single();
+
+    if (course) {
+      const courseStart = new Date().toISOString().split('T')[0] + ' 00:00:00';
+      const endDate = new Date();
+      endDate.setDate(endDate.getDate() + (course.course_length_days || 365));
+      const courseEnd = endDate.toISOString().split('T')[0] + ' 00:00:00';
+      const isSemester2 = (course.title || '').toLowerCase().includes('semester 2');
+      const isMainCourse = !isSemester2;
+
+      await supabase.from('student_course_enrolments').upsert({
+        user_id: studentId,
+        course_id: course.id,
+        allowed_to_next_course: 1,
+        course_start_at: courseStart,
+        course_ends_at: courseEnd,
+        status: 'ENROLLED',
+        version: course.version,
+        is_chargeable: link.is_chargeable,
+        registered_by: studentId,
+        registered_on_create: 1,
+        is_semester_2: isSemester2 ? 1 : 0,
+        is_main_course: isMainCourse ? 1 : 0,
+        show_registration_date: 0,
+        created_at: now,
+        updated_at: now,
+      }, { onConflict: 'user_id,course_id' });
+
+      // 9. Auto-enrol next course if configured
+      if (course.auto_register_next_course && course.next_course) {
+        const { data: nextCourse } = await supabase
+          .from('courses')
+          .select('id, course_length_days, version')
+          .eq('id', course.next_course)
+          .single();
+        if (nextCourse) {
+          const nextStart = new Date(endDate);
+          nextStart.setDate(nextStart.getDate() + (course.next_course_after_days || 0));
+          const nextEnd = new Date(nextStart);
+          nextEnd.setDate(nextEnd.getDate() + (nextCourse.course_length_days || 365));
+
+          await supabase.from('student_course_enrolments').upsert({
+            user_id: studentId,
+            course_id: nextCourse.id,
+            allowed_to_next_course: 0,
+            course_start_at: nextStart.toISOString().split('T')[0] + ' 00:00:00',
+            course_ends_at: nextEnd.toISOString().split('T')[0] + ' 00:00:00',
+            status: 'ENROLLED',
+            version: nextCourse.version,
+            is_chargeable: link.is_chargeable,
+            registered_by: studentId,
+            registered_on_create: 1,
+            is_semester_2: 1,
+            is_main_course: 0,
+            show_registration_date: 0,
+            created_at: now,
+            updated_at: now,
+          }, { onConflict: 'user_id,course_id' });
+        }
+      }
+    }
+
+    return { success: true, message: 'Registration successful! You can now log in.' };
+  } catch (e) {
+    if (e instanceof Error) {
+      if (e.message.includes('already registered') || e.message.includes('already been registered')) {
+        return { success: false, message: 'This email is already registered. Please log in instead.' };
+      }
+      return { success: false, message: e.message };
+    }
+    return { success: false, message: 'Registration failed. Please try again.' };
+  }
+}
+
+/** Fetch available timezones for signup form */
+export async function fetchTimezones(): Promise<{ id: number; name: string; region: string }[]> {
+  assertConfigured();
+  try {
+    const { data, error } = await supabase
+      .from('timezones')
+      .select('id, name, region')
+      .order('region', { ascending: true });
+    if (error) throw error;
+    return data ?? [];
+  } catch (e) {
+    return [];
+  }
+}
+
 export async function fetchCompanyById(companyId: number): Promise<DbCompany | null> {
   assertConfigured();
   try {

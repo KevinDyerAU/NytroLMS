@@ -7,11 +7,25 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { Label } from '@/components/ui/label';
+import { Checkbox } from '@/components/ui/checkbox';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
 import { StatusBadge } from './StatusBadge';
-import { fetchCompanyFullDetail, type CompanyFullDetail as CompanyFullDetailType } from '@/lib/api';
+import { useAuth } from '@/contexts/AuthContext';
+import {
+  fetchCompanyFullDetail,
+  createSignupLink,
+  deleteSignupLink,
+  toggleSignupLinkActive,
+  fetchAvailableCourses,
+  type CompanyFullDetail as CompanyFullDetailType,
+} from '@/lib/api';
+import { toast } from 'sonner';
 import {
   ArrowLeft, Edit, Building2, Users, Mail, Phone, MapPin,
-  Link2, UserCircle, Loader2, Hash,
+  Link2, UserCircle, Loader2, Hash, Plus, Trash2, Copy,
+  ExternalLink, ToggleLeft, ToggleRight,
 } from 'lucide-react';
 
 interface CompanyDetailProps {
@@ -21,9 +35,13 @@ interface CompanyDetailProps {
 }
 
 export function CompanyDetail({ companyId, onBack, onEdit }: CompanyDetailProps) {
+  const { user } = useAuth();
   const [company, setCompany] = useState<CompanyFullDetailType | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [addLinkOpen, setAddLinkOpen] = useState(false);
+  const [deletingLinkId, setDeletingLinkId] = useState<number | null>(null);
+  const [togglingLinkId, setTogglingLinkId] = useState<number | null>(null);
 
   const loadCompany = useCallback(async () => {
     setLoading(true);
@@ -239,34 +257,105 @@ export function CompanyDetail({ companyId, onBack, onEdit }: CompanyDetailProps)
         {/* ── Signup Links Tab ── */}
         <TabsContent value="links" className="mt-4">
           <Card>
-            <CardHeader>
+            <CardHeader className="flex flex-row items-center justify-between">
               <CardTitle className="text-base text-[#3b82f6]">Signup Links ({company.signup_links.length})</CardTitle>
+              <Button size="sm" className="bg-[#3b82f6] hover:bg-[#2563eb] text-white" onClick={() => setAddLinkOpen(true)}>
+                <Plus className="w-4 h-4 mr-1.5" /> Create Link
+              </Button>
             </CardHeader>
             <CardContent>
               {company.signup_links.length === 0 ? (
-                <p className="text-sm text-[#94a3b8] text-center py-8">No signup links</p>
+                <div className="text-center py-8">
+                  <Link2 className="w-10 h-10 text-[#94a3b8] mx-auto mb-2" />
+                  <p className="text-sm text-[#94a3b8]">No signup links</p>
+                  <Button size="sm" variant="outline" className="mt-3" onClick={() => setAddLinkOpen(true)}>
+                    <Plus className="w-4 h-4 mr-1.5" /> Create First Link
+                  </Button>
+                </div>
               ) : (
                 <div className="space-y-3">
-                  {company.signup_links.map(link => (
-                    <div key={link.id} className="border border-[#e2e8f0] rounded-lg p-4">
-                      <div className="flex items-start justify-between">
-                        <div>
-                          <h4 className="font-medium text-[#1e293b]">{link.course_title}</h4>
-                          <p className="text-xs text-[#94a3b8] font-mono mt-1">{link.key}</p>
+                  {company.signup_links.map(link => {
+                    const signupUrl = `${window.location.origin}/signup/${link.key}`;
+                    return (
+                      <div key={link.id} className="border border-[#e2e8f0] rounded-lg p-4 hover:border-[#3b82f6]/30 transition-colors">
+                        <div className="flex items-start justify-between">
+                          <div className="flex-1 min-w-0">
+                            <h4 className="font-medium text-[#1e293b]">{link.course_title}</h4>
+                            <div className="flex items-center gap-2 mt-1">
+                              <p className="text-xs text-[#94a3b8] font-mono truncate">{signupUrl}</p>
+                              <Button
+                                variant="ghost" size="sm" className="h-6 w-6 p-0 text-[#94a3b8] hover:text-[#3b82f6] flex-shrink-0"
+                                onClick={() => { navigator.clipboard.writeText(signupUrl); toast.success('Link copied to clipboard'); }}
+                                title="Copy signup URL"
+                              >
+                                <Copy className="w-3 h-3" />
+                              </Button>
+                              <a href={signupUrl} target="_blank" rel="noopener noreferrer" className="flex-shrink-0">
+                                <Button variant="ghost" size="sm" className="h-6 w-6 p-0 text-[#94a3b8] hover:text-[#3b82f6]" title="Open signup page">
+                                  <ExternalLink className="w-3 h-3" />
+                                </Button>
+                              </a>
+                            </div>
+                          </div>
+                          <div className="flex items-center gap-1 ml-2">
+                            <StatusBadge status={link.is_active === 1 ? 'Active' : 'Inactive'} />
+                            <Button
+                              variant="ghost" size="sm" className="h-7 w-7 p-0 text-[#64748b]"
+                              disabled={togglingLinkId === link.id}
+                              title={link.is_active === 1 ? 'Deactivate link' : 'Activate link'}
+                              onClick={async () => {
+                                setTogglingLinkId(link.id);
+                                try {
+                                  await toggleSignupLinkActive(link.id, link.is_active !== 1);
+                                  toast.success(link.is_active === 1 ? 'Link deactivated' : 'Link activated');
+                                  loadCompany();
+                                } catch { toast.error('Failed to update'); }
+                                finally { setTogglingLinkId(null); }
+                              }}
+                            >
+                              {togglingLinkId === link.id ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : (link.is_active === 1 ? <ToggleRight className="w-3.5 h-3.5 text-green-500" /> : <ToggleLeft className="w-3.5 h-3.5" />)}
+                            </Button>
+                            <Button
+                              variant="ghost" size="sm" className="h-7 w-7 p-0 text-[#64748b] hover:text-red-500"
+                              disabled={deletingLinkId === link.id}
+                              title="Delete link"
+                              onClick={async () => {
+                                if (!confirm(`Delete signup link for "${link.course_title}"?`)) return;
+                                setDeletingLinkId(link.id);
+                                try {
+                                  await deleteSignupLink(link.id);
+                                  toast.success('Signup link deleted');
+                                  loadCompany();
+                                } catch { toast.error('Failed to delete'); }
+                                finally { setDeletingLinkId(null); }
+                              }}
+                            >
+                              {deletingLinkId === link.id ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Trash2 className="w-3.5 h-3.5" />}
+                            </Button>
+                          </div>
                         </div>
-                        <StatusBadge status={link.is_active === 1 ? 'Active' : 'Inactive'} />
+                        {link.created_at && (
+                          <p className="text-xs text-[#94a3b8] mt-2">
+                            Created: {new Date(link.created_at).toLocaleDateString('en-AU', { day: 'numeric', month: 'short', year: 'numeric' })}
+                          </p>
+                        )}
                       </div>
-                      {link.created_at && (
-                        <p className="text-xs text-[#94a3b8] mt-2">
-                          Created: {new Date(link.created_at).toLocaleDateString('en-AU', { day: 'numeric', month: 'short', year: 'numeric' })}
-                        </p>
-                      )}
-                    </div>
-                  ))}
+                    );
+                  })}
                 </div>
               )}
             </CardContent>
           </Card>
+
+          {/* Add Signup Link Dialog */}
+          <AddSignupLinkDialog
+            open={addLinkOpen}
+            onOpenChange={setAddLinkOpen}
+            companyId={companyId}
+            leaders={company.leaders}
+            creatorId={user?.id ?? 0}
+            onSaved={loadCompany}
+          />
         </TabsContent>
       </Tabs>
     </div>
@@ -294,5 +383,124 @@ function InfoRow({ icon, label, children }: { icon?: React.ReactNode; label: str
         <span className="text-[#1e293b]">{children}</span>
       </div>
     </div>
+  );
+}
+
+// ─── Add Signup Link Dialog ────────────────────────────────────────────────
+
+function AddSignupLinkDialog({ open, onOpenChange, companyId, leaders, creatorId, onSaved }: {
+  open: boolean;
+  onOpenChange: (v: boolean) => void;
+  companyId: number;
+  leaders: { id: number; first_name: string; last_name: string }[];
+  creatorId: number;
+  onSaved: () => void;
+}) {
+  const [saving, setSaving] = useState(false);
+  const [courses, setCourses] = useState<{ id: number; title: string }[]>([]);
+  const [loadingCourses, setLoadingCourses] = useState(false);
+  const [selectedCourseId, setSelectedCourseId] = useState('');
+  const [selectedLeaderId, setSelectedLeaderId] = useState('');
+  const [isChargeable, setIsChargeable] = useState(false);
+
+  useEffect(() => {
+    if (open && courses.length === 0) {
+      setLoadingCourses(true);
+      fetchAvailableCourses()
+        .then(c => setCourses(c ?? []))
+        .finally(() => setLoadingCourses(false));
+    }
+  }, [open]);
+
+  const reset = () => {
+    setSelectedCourseId('');
+    setSelectedLeaderId('');
+    setIsChargeable(false);
+  };
+
+  const handleSubmit = async () => {
+    if (!selectedCourseId) { toast.error('Please select a course'); return; }
+    if (!selectedLeaderId) { toast.error('Please select a leader'); return; }
+
+    setSaving(true);
+    try {
+      const result = await createSignupLink({
+        company_id: companyId,
+        leader_id: parseInt(selectedLeaderId, 10),
+        course_id: parseInt(selectedCourseId, 10),
+        creator_id: creatorId,
+        is_chargeable: isChargeable,
+      });
+      const signupUrl = `${window.location.origin}/signup/${result.key}`;
+      await navigator.clipboard.writeText(signupUrl);
+      toast.success('Signup link created and copied to clipboard!');
+      reset();
+      onSaved();
+      onOpenChange(false);
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Failed to create signup link');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <Dialog open={open} onOpenChange={(v) => { if (!v) { reset(); onOpenChange(false); } else onOpenChange(v); }}>
+      <DialogContent className="max-w-md">
+        <DialogHeader>
+          <DialogTitle>Create Signup Link</DialogTitle>
+        </DialogHeader>
+        <div className="space-y-4">
+          <div className="space-y-2">
+            <Label>Course <span className="text-red-500">*</span></Label>
+            {loadingCourses ? (
+              <div className="flex items-center gap-2 text-sm text-[#94a3b8]">
+                <Loader2 className="w-4 h-4 animate-spin" /> Loading courses...
+              </div>
+            ) : (
+              <Select value={selectedCourseId} onValueChange={setSelectedCourseId}>
+                <SelectTrigger><SelectValue placeholder="Select a course" /></SelectTrigger>
+                <SelectContent>
+                  {courses.map(c => (
+                    <SelectItem key={c.id} value={String(c.id)}>{c.title}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            )}
+          </div>
+
+          <div className="space-y-2">
+            <Label>Leader <span className="text-red-500">*</span></Label>
+            {leaders.length === 0 ? (
+              <p className="text-sm text-amber-600">No leaders linked to this company. Add a leader first.</p>
+            ) : (
+              <Select value={selectedLeaderId} onValueChange={setSelectedLeaderId}>
+                <SelectTrigger><SelectValue placeholder="Select a leader" /></SelectTrigger>
+                <SelectContent>
+                  {leaders.map(l => (
+                    <SelectItem key={l.id} value={String(l.id)}>{l.first_name} {l.last_name}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            )}
+          </div>
+
+          <div className="flex items-center gap-2">
+            <Checkbox id="is-chargeable" checked={isChargeable} onCheckedChange={(c) => setIsChargeable(c === true)} />
+            <Label htmlFor="is-chargeable" className="text-sm font-normal cursor-pointer">Chargeable enrolment</Label>
+          </div>
+        </div>
+        <DialogFooter>
+          <Button variant="outline" onClick={() => { reset(); onOpenChange(false); }} disabled={saving}>Cancel</Button>
+          <Button
+            className="bg-[#3b82f6] hover:bg-[#2563eb] text-white"
+            disabled={saving || !selectedCourseId || !selectedLeaderId || leaders.length === 0}
+            onClick={handleSubmit}
+          >
+            {saving && <Loader2 className="w-4 h-4 mr-1.5 animate-spin" />} Create Link
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
   );
 }

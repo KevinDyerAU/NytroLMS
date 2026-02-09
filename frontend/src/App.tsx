@@ -38,6 +38,7 @@ const Communications = lazy(() => import("./pages/Communications"));
 const Automation = lazy(() => import("./pages/Automation"));
 const DataTypes = lazy(() => import("./pages/DataTypes"));
 const MyCourses = lazy(() => import("./pages/MyCourses"));
+const PublicSignup = lazy(() => import("./pages/PublicSignup"));
 
 function PageLoader() {
   return (
@@ -104,7 +105,8 @@ function AppRoutes() {
       {/* Profile */}
       <Route path="/profile" element={<ProtectedRoute><Profile /></ProtectedRoute>} />
 
-      {/* Password reset route */}
+      {/* Public routes (no auth required) */}
+      <Route path="/signup/:key" element={<PublicSignup />} />
       <Route path="/reset-password" element={<ResetPassword />} />
 
       {/* Catch-all redirect */}
