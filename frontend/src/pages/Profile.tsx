@@ -23,7 +23,7 @@ import {
 import { supabase } from '@/lib/supabase';
 import {
   User, Mail, Phone, MapPin, Globe, Clock, Briefcase,
-  Camera, Lock, Save, Loader2, AlertCircle, Eye, EyeOff,
+  Camera, Lock, Save, Loader2, AlertCircle, Eye, EyeOff, UserX,
 } from 'lucide-react';
 import { toast } from 'sonner';
 
@@ -476,6 +476,28 @@ export default function Profile() {
                     {changingPassword ? 'Changing...' : 'Change Password'}
                   </Button>
                 </div>
+              </div>
+
+              <div className="border-t border-[#e2e8f0] pt-6 mt-6">
+                <h3 className="font-heading font-semibold text-red-600 mb-1">Danger Zone</h3>
+                <p className="text-sm text-[#94a3b8] mb-4">Deactivating your account will disable your login and mark your profile as inactive.</p>
+                <Button
+                  variant="outline"
+                  className="text-red-600 border-red-200 hover:bg-red-50"
+                  onClick={async () => {
+                    if (!confirm('Are you sure you want to deactivate your account? You will be logged out.')) return;
+                    try {
+                      await supabase.from('users').update({ is_active: 0 }).eq('id', userId);
+                      await supabase.from('user_details').update({ status: 'INACTIVE' }).eq('user_id', userId);
+                      toast.success('Account deactivated');
+                      await supabase.auth.signOut();
+                    } catch {
+                      toast.error('Failed to deactivate account');
+                    }
+                  }}
+                >
+                  <UserX className="w-4 h-4 mr-1.5" /> Deactivate Account
+                </Button>
               </div>
             </Card>
           </TabsContent>

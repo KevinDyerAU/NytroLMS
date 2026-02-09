@@ -19,19 +19,22 @@ import {
   deleteStudentDocument,
   fetchStudentNotes,
   createStudentNote,
+  updateStudentNote,
   deleteStudentNote,
   toggleNotePin,
+  fetchAvailableCourses,
   type StudentFullDetail as StudentFullDetailType,
   type StudentDocument,
   type StudentNote,
 } from '@/lib/api';
+import { supabase } from '@/lib/supabase';
 import { useAuth } from '@/contexts/AuthContext';
 import type { DbActivityLog } from '@/lib/types';
 import {
   ArrowLeft, Edit, UserCheck, UserX, Mail, Phone, MapPin,
   Building2, GraduationCap, BookOpen, Clock, Calendar, User,
   Shield, Activity, Loader2, FileText, StickyNote, Pin,
-  Trash2, Send, Upload, Download,
+  Trash2, Send, Upload, Download, Archive, Plus, Pencil, X, Check,
 } from 'lucide-react';
 import { toast } from 'sonner';
 
@@ -55,6 +58,13 @@ export function StudentDetail({ studentId, onBack, onEdit }: StudentDetailProps)
   const [error, setError] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState('overview');
   const [newNote, setNewNote] = useState('');
+  const [editingNoteId, setEditingNoteId] = useState<number | null>(null);
+  const [editingNoteText, setEditingNoteText] = useState('');
+  const [archiving, setArchiving] = useState(false);
+  const [assignCourseOpen, setAssignCourseOpen] = useState(false);
+  const [availableCourses, setAvailableCourses] = useState<{ id: number; title: string; category: string | null }[]>([]);
+  const [selectedCourseId, setSelectedCourseId] = useState<number | null>(null);
+  const [assigningCourse, setAssigningCourse] = useState(false);
 
   const loadStudent = useCallback(async () => {
     setLoading(true);
@@ -178,6 +188,63 @@ export function StudentDetail({ studentId, onBack, onEdit }: StudentDetailProps)
     }
   };
 
+  const handleEditNote = async (noteId: number) => {
+    if (!editingNoteText.trim()) return;
+    try {
+      await updateStudentNote(noteId, editingNoteText.trim());
+      setNotes(prev => prev.map(n => n.id === noteId ? { ...n, note_body: editingNoteText.trim() } : n));
+      setEditingNoteId(null);
+      setEditingNoteText('');
+      toast.success('Note updated');
+    } catch {
+      toast.error('Failed to update note');
+    }
+  };
+
+  const handleArchiveStudent = async () => {
+    if (!student || !confirm(`Archive ${student.first_name} ${student.last_name}? This will mark the student as archived.`)) return;
+    setArchiving(true);
+    try {
+      await supabase.from('users').update({ is_archived: 1, is_active: 0 }).eq('id', student.id);
+      await supabase.from('user_details').update({ status: 'ARCHIVED' }).eq('user_id', student.id);
+      toast.success(`${student.first_name} ${student.last_name} has been archived`);
+      loadStudent();
+    } catch {
+      toast.error('Failed to archive student');
+    } finally {
+      setArchiving(false);
+    }
+  };
+
+  const handleAssignCourse = async () => {
+    if (!student || !selectedCourseId) return;
+    setAssigningCourse(true);
+    try {
+      const today = new Date().toISOString().split('T')[0];
+      // Get course to calculate end date
+      const { data: course } = await supabase.from('courses').select('course_length_days').eq('id', selectedCourseId).single();
+      const endDate = new Date();
+      endDate.setDate(endDate.getDate() + (course?.course_length_days || 90));
+
+      await supabase.from('student_course_enrolments').insert({
+        user_id: student.id,
+        course_id: selectedCourseId,
+        status: 'ENROLLED',
+        course_start_at: today + ' 00:00:00',
+        course_ends_at: endDate.toISOString().split('T')[0] + ' 00:00:00',
+        registered_by: authUser?.id,
+      });
+      toast.success('Course assigned successfully');
+      setAssignCourseOpen(false);
+      setSelectedCourseId(null);
+      loadStudent();
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Failed to assign course');
+    } finally {
+      setAssigningCourse(false);
+    }
+  };
+
   const handleActivate = async () => {
     if (!student) return;
     try {
@@ -261,6 +328,9 @@ export function StudentDetail({ studentId, onBack, onEdit }: StudentDetailProps)
               <UserCheck className="w-4 h-4 mr-1.5" /> Activate
             </Button>
           )}
+          <Button variant="outline" size="sm" className="text-[#64748b]" onClick={handleArchiveStudent} disabled={archiving || student.is_archived === 1}>
+            <Archive className="w-4 h-4 mr-1.5" /> {student.is_archived === 1 ? 'Archived' : 'Archive'}
+          </Button>
           <Button size="sm" className="bg-[#3b82f6] hover:bg-[#2563eb] text-white" onClick={() => onEdit(student.id)}>
             <Edit className="w-4 h-4 mr-1.5" /> Edit
           </Button>
@@ -389,11 +459,47 @@ export function StudentDetail({ studentId, onBack, onEdit }: StudentDetailProps)
             <div className="lg:col-span-2 space-y-4">
               <Card>
                 <CardHeader className="pb-3 flex flex-row items-center justify-between">
-                  <CardTitle className="text-base text-[#3b82f6]">Course(s) Enrolled</CardTitle>
-                  <Badge variant="outline" className="text-[#3b82f6] border-[#3b82f6]">
-                    {student.enrolments.length} {student.enrolments.length === 1 ? 'course' : 'courses'}
-                  </Badge>
+                  <div className="flex items-center gap-2">
+                    <CardTitle className="text-base text-[#3b82f6]">Course(s) Enrolled</CardTitle>
+                    <Badge variant="outline" className="text-[#3b82f6] border-[#3b82f6]">
+                      {student.enrolments.length} {student.enrolments.length === 1 ? 'course' : 'courses'}
+                    </Badge>
+                  </div>
+                  <Button size="sm" variant="outline" onClick={async () => {
+                    setAssignCourseOpen(true);
+                    if (availableCourses.length === 0) {
+                      try {
+                        const courses = await fetchAvailableCourses();
+                        setAvailableCourses(courses);
+                      } catch { /* silent */ }
+                    }
+                  }}>
+                    <Plus className="w-4 h-4 mr-1" /> Assign Course
+                  </Button>
                 </CardHeader>
+                {/* Assign Course Inline */}
+                {assignCourseOpen && (
+                  <div className="mx-6 mb-4 p-3 border border-[#3b82f6]/30 rounded-lg bg-[#f8fafc]">
+                    <div className="flex items-center gap-2">
+                      <select
+                        className="flex-1 h-9 rounded-md border border-[#e2e8f0] px-3 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-[#3b82f6]"
+                        value={selectedCourseId ?? ''}
+                        onChange={(e) => setSelectedCourseId(e.target.value ? Number(e.target.value) : null)}
+                      >
+                        <option value="">Select a course...</option>
+                        {availableCourses.map(c => (
+                          <option key={c.id} value={c.id}>{c.title}{c.category ? ` (${c.category})` : ''}</option>
+                        ))}
+                      </select>
+                      <Button size="sm" className="bg-[#3b82f6] hover:bg-[#2563eb] text-white" disabled={!selectedCourseId || assigningCourse} onClick={handleAssignCourse}>
+                        {assigningCourse ? <Loader2 className="w-4 h-4 animate-spin" /> : 'Assign'}
+                      </Button>
+                      <Button size="sm" variant="ghost" onClick={() => { setAssignCourseOpen(false); setSelectedCourseId(null); }}>
+                        <X className="w-4 h-4" />
+                      </Button>
+                    </div>
+                  </div>
+                )}
                 <CardContent>
                   {student.enrolments.length === 0 ? (
                     <p className="text-sm text-[#94a3b8]">No courses assigned to this student yet</p>
@@ -651,7 +757,26 @@ export function StudentDetail({ studentId, onBack, onEdit }: StudentDetailProps)
                               <Pin className="w-3 h-3" /> Pinned
                             </span>
                           )}
-                          <p className="text-sm text-[#1e293b] whitespace-pre-wrap">{note.note_body}</p>
+                          {editingNoteId === note.id ? (
+                            <div className="space-y-2">
+                              <textarea
+                                className="w-full min-h-[60px] rounded-md border border-[#e2e8f0] px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#3b82f6] resize-none"
+                                value={editingNoteText}
+                                onChange={(e) => setEditingNoteText(e.target.value)}
+                                autoFocus
+                              />
+                              <div className="flex gap-1">
+                                <Button size="sm" className="h-7 bg-[#3b82f6] hover:bg-[#2563eb] text-white" onClick={() => handleEditNote(note.id)}>
+                                  <Check className="w-3.5 h-3.5 mr-1" /> Save
+                                </Button>
+                                <Button size="sm" variant="ghost" className="h-7" onClick={() => { setEditingNoteId(null); setEditingNoteText(''); }}>
+                                  <X className="w-3.5 h-3.5 mr-1" /> Cancel
+                                </Button>
+                              </div>
+                            </div>
+                          ) : (
+                            <p className="text-sm text-[#1e293b] whitespace-pre-wrap">{note.note_body}</p>
+                          )}
                           <p className="text-xs text-[#94a3b8] mt-2">
                             {note.author_name}
                             {note.created_at && ` · ${new Date(note.created_at).toLocaleString('en-AU', {
@@ -661,6 +786,14 @@ export function StudentDetail({ studentId, onBack, onEdit }: StudentDetailProps)
                           </p>
                         </div>
                         <div className="flex items-center gap-1 flex-shrink-0">
+                          <Button
+                            variant="ghost" size="sm"
+                            className="text-[#94a3b8] hover:text-[#3b82f6] h-7 w-7 p-0"
+                            onClick={() => { setEditingNoteId(note.id); setEditingNoteText(note.note_body); }}
+                            title="Edit"
+                          >
+                            <Pencil className="w-3.5 h-3.5" />
+                          </Button>
                           <Button
                             variant="ghost" size="sm"
                             className={`h-7 w-7 p-0 ${note.is_pinned ? 'text-amber-500' : 'text-[#94a3b8] hover:text-amber-500'}`}

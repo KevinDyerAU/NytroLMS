@@ -864,6 +864,19 @@ export async function createStudentNote(studentId: number, noteBody: string, aut
   }
 }
 
+export async function updateStudentNote(noteId: number, noteBody: string): Promise<void> {
+  assertConfigured();
+  try {
+    const { error } = await supabase
+      .from('notes')
+      .update({ note_body: noteBody })
+      .eq('id', noteId);
+    if (error) throw error;
+  } catch (e) {
+    handleError(e, 'Failed to update note');
+  }
+}
+
 export async function deleteStudentNote(noteId: number): Promise<void> {
   assertConfigured();
   try {
@@ -1728,6 +1741,320 @@ export async function fetchQuizAttemptDetail(attemptId: number): Promise<DbQuizA
     };
   } catch (e) {
     handleError(e, 'Failed to fetch assessment detail');
+  }
+}
+
+// ─── Full Quiz Attempt Review (questions, answers, evaluation, feedback) ──────
+
+export interface QuizQuestion {
+  id: number;
+  order: string | number;
+  title: string;
+  content: string;
+  answer_type: string; // 'SINGLE' | 'MCQ' | 'TABLE' etc.
+  options: Record<string, unknown> | unknown[] | null;
+  correct_answer: string | null;
+  table_structure: unknown | null;
+}
+
+export interface EvaluationResult {
+  status: string; // 'satisfactory' | 'not satisfactory' | 'correct' | 'incorrect'
+  comment: string;
+}
+
+export interface QuizAttemptFullReview {
+  // Attempt metadata
+  id: number;
+  user_id: number;
+  quiz_id: number;
+  course_id: number;
+  lesson_id: number;
+  topic_id: number;
+  attempt: number;
+  status: string;
+  system_result: string | null;
+  assisted: number;
+  submitted_at: string | null;
+  accessed_at: string | null;
+  accessor_id: number | null;
+  created_at: string | null;
+  // Resolved names
+  student_name: string;
+  course_title: string;
+  lesson_title: string;
+  topic_title: string;
+  quiz_title: string;
+  passing_percentage: number | null;
+  // Questions & answers
+  questions: QuizQuestion[];
+  submitted_answers: Record<string, unknown>;
+  // Evaluation (per-question marking results)
+  evaluation: {
+    id: number;
+    results: Record<string, EvaluationResult> | null;
+    status: string | null;
+    evaluator_id: number | null;
+    evaluator_name: string | null;
+    updated_at: string | null;
+  } | null;
+  // Feedback messages
+  feedbacks: {
+    id: number;
+    body: Record<string, unknown> | null;
+    owner_id: number | null;
+    owner_name: string | null;
+    updated_at: string | null;
+  }[];
+}
+
+export async function fetchQuizAttemptFullReview(attemptId: number): Promise<QuizAttemptFullReview | null> {
+  assertConfigured();
+  try {
+    const { data: attempt, error } = await supabase
+      .from('quiz_attempts')
+      .select('*')
+      .eq('id', attemptId)
+      .single();
+    if (error || !attempt) return null;
+
+    // Parse JSON fields
+    let questions: QuizQuestion[] = [];
+    try {
+      questions = typeof attempt.questions === 'string' ? JSON.parse(attempt.questions) : (attempt.questions ?? []);
+    } catch { questions = []; }
+
+    let submittedAnswers: Record<string, unknown> = {};
+    try {
+      submittedAnswers = typeof attempt.submitted_answers === 'string'
+        ? JSON.parse(attempt.submitted_answers)
+        : (attempt.submitted_answers ?? {});
+    } catch { submittedAnswers = {}; }
+
+    // Fetch related data in parallel
+    const [studentResult, courseResult, lessonResult, topicResult, quizResult, evalResult, feedbackResult] = await Promise.all([
+      supabase.from('users').select('first_name, last_name').eq('id', attempt.user_id).single(),
+      supabase.from('courses').select('title').eq('id', attempt.course_id).single(),
+      supabase.from('lessons').select('title').eq('id', attempt.lesson_id).single(),
+      supabase.from('topics').select('title').eq('id', attempt.topic_id).single(),
+      supabase.from('quizzes').select('title, passing_percentage').eq('id', attempt.quiz_id).single(),
+      supabase.from('evaluations')
+        .select('id, results, status, evaluator_id, updated_at')
+        .eq('evaluable_type', 'App\\Models\\QuizAttempt')
+        .eq('evaluable_id', attemptId)
+        .order('id', { ascending: false })
+        .limit(1)
+        .maybeSingle(),
+      supabase.from('feedbacks')
+        .select('id, body, owner_id, updated_at')
+        .eq('attachable_type', 'App\\Models\\Quiz')
+        .eq('attachable_id', attempt.quiz_id)
+        .eq('user_id', attempt.user_id)
+        .order('id', { ascending: false }),
+    ]);
+
+    // Parse evaluation results
+    let evaluation: QuizAttemptFullReview['evaluation'] = null;
+    if (evalResult.data) {
+      let evalResults: Record<string, EvaluationResult> | null = null;
+      try {
+        evalResults = typeof evalResult.data.results === 'string'
+          ? JSON.parse(evalResult.data.results)
+          : evalResult.data.results;
+      } catch { evalResults = null; }
+
+      let evaluatorName: string | null = null;
+      if (evalResult.data.evaluator_id && evalResult.data.evaluator_id > 0) {
+        const { data: ev } = await supabase.from('users').select('first_name, last_name').eq('id', evalResult.data.evaluator_id).single();
+        evaluatorName = ev ? `${ev.first_name} ${ev.last_name}` : null;
+      } else if (evalResult.data.evaluator_id === 0) {
+        evaluatorName = 'System';
+      }
+
+      evaluation = {
+        id: evalResult.data.id,
+        results: evalResults,
+        status: evalResult.data.status,
+        evaluator_id: evalResult.data.evaluator_id,
+        evaluator_name: evaluatorName,
+        updated_at: evalResult.data.updated_at,
+      };
+    }
+
+    // Parse feedback bodies
+    const feedbacks: QuizAttemptFullReview['feedbacks'] = [];
+    for (const fb of feedbackResult.data ?? []) {
+      let body: Record<string, unknown> | null = null;
+      try {
+        body = typeof fb.body === 'string' ? JSON.parse(fb.body) : fb.body;
+      } catch { body = null; }
+
+      let ownerName: string | null = null;
+      if (fb.owner_id && fb.owner_id > 0) {
+        const { data: ow } = await supabase.from('users').select('first_name, last_name').eq('id', fb.owner_id).single();
+        ownerName = ow ? `${ow.first_name} ${ow.last_name}` : null;
+      } else if (fb.owner_id === 0) {
+        ownerName = 'System';
+      }
+
+      feedbacks.push({
+        id: fb.id,
+        body,
+        owner_id: fb.owner_id,
+        owner_name: ownerName,
+        updated_at: fb.updated_at,
+      });
+    }
+
+    return {
+      id: attempt.id,
+      user_id: attempt.user_id,
+      quiz_id: attempt.quiz_id,
+      course_id: attempt.course_id,
+      lesson_id: attempt.lesson_id,
+      topic_id: attempt.topic_id,
+      attempt: attempt.attempt,
+      status: attempt.status,
+      system_result: attempt.system_result,
+      assisted: attempt.assisted,
+      submitted_at: attempt.submitted_at,
+      accessed_at: attempt.accessed_at,
+      accessor_id: attempt.accessor_id,
+      created_at: attempt.created_at,
+      student_name: studentResult.data ? `${studentResult.data.first_name} ${studentResult.data.last_name}` : 'Unknown',
+      course_title: courseResult.data?.title ?? 'Unknown',
+      lesson_title: lessonResult.data?.title ?? 'Unknown',
+      topic_title: topicResult.data?.title ?? 'Unknown',
+      quiz_title: quizResult.data?.title ?? 'Unknown',
+      passing_percentage: quizResult.data?.passing_percentage ?? null,
+      questions,
+      submitted_answers: submittedAnswers,
+      evaluation,
+      feedbacks,
+    };
+  } catch (e) {
+    handleError(e, 'Failed to fetch assessment review');
+  }
+}
+
+// ─── Assessment Marking Actions ──────────────────────────────────────────────
+
+export async function evaluateQuestion(
+  attemptId: number,
+  questionId: string,
+  status: string,
+  comment: string,
+  studentId: number,
+  evaluatorId: number,
+): Promise<void> {
+  assertConfigured();
+  try {
+    // Get existing evaluation for this attempt
+    const { data: existing } = await supabase
+      .from('evaluations')
+      .select('id, results')
+      .eq('evaluable_type', 'App\\Models\\QuizAttempt')
+      .eq('evaluable_id', attemptId)
+      .order('id', { ascending: false })
+      .limit(1)
+      .maybeSingle();
+
+    const newResult = { [questionId]: { status, comment } };
+
+    if (existing && !existing.results?.status) {
+      // Update existing incomplete evaluation
+      let existingResults: Record<string, unknown> = {};
+      try {
+        existingResults = typeof existing.results === 'string' ? JSON.parse(existing.results) : (existing.results ?? {});
+      } catch { existingResults = {}; }
+
+      const merged = { ...existingResults, ...newResult };
+      const { error } = await supabase
+        .from('evaluations')
+        .update({ results: merged })
+        .eq('id', existing.id);
+      if (error) throw error;
+    } else {
+      // Create new evaluation
+      const { error } = await supabase
+        .from('evaluations')
+        .insert({
+          evaluable_type: 'App\\Models\\QuizAttempt',
+          evaluable_id: attemptId,
+          results: newResult,
+          student_id: studentId,
+          evaluator_id: evaluatorId,
+        });
+      if (error) throw error;
+    }
+  } catch (e) {
+    handleError(e, 'Failed to evaluate question');
+  }
+}
+
+export async function submitAssessmentFeedback(
+  attemptId: number,
+  quizId: number,
+  studentId: number,
+  evaluatorId: number,
+  feedbackMessage: string,
+  overallStatus: 'SATISFACTORY' | 'FAIL',
+): Promise<void> {
+  assertConfigured();
+  try {
+    // Get latest evaluation
+    const { data: evaluation } = await supabase
+      .from('evaluations')
+      .select('id')
+      .eq('evaluable_type', 'App\\Models\\QuizAttempt')
+      .eq('evaluable_id', attemptId)
+      .order('id', { ascending: false })
+      .limit(1)
+      .maybeSingle();
+
+    // Update evaluation status
+    if (evaluation) {
+      await supabase
+        .from('evaluations')
+        .update({ status: overallStatus === 'SATISFACTORY' ? 'SATISFACTORY' : 'UNSATISFACTORY' })
+        .eq('id', evaluation.id);
+    }
+
+    // Create feedback
+    await supabase
+      .from('feedbacks')
+      .insert({
+        attachable_type: 'App\\Models\\Quiz',
+        attachable_id: quizId,
+        body: { message: feedbackMessage, evaluation_id: evaluation?.id, attempt_id: attemptId },
+        user_id: studentId,
+        owner_id: evaluatorId,
+      });
+
+    // Update quiz attempt status
+    await supabase
+      .from('quiz_attempts')
+      .update({
+        status: overallStatus,
+        accessor_id: evaluatorId,
+        accessed_at: new Date().toISOString(),
+        is_valid_accessor: 1,
+      })
+      .eq('id', attemptId);
+  } catch (e) {
+    handleError(e, 'Failed to submit assessment feedback');
+  }
+}
+
+export async function returnAssessment(attemptId: number): Promise<void> {
+  assertConfigured();
+  try {
+    const { error } = await supabase
+      .from('quiz_attempts')
+      .update({ status: 'RETURNED' })
+      .eq('id', attemptId);
+    if (error) throw error;
+  } catch (e) {
+    handleError(e, 'Failed to return assessment');
   }
 }
 

@@ -45,6 +45,20 @@ export default function Students() {
           onBack={() => setSelectedStudentId(null)}
           onEdit={(id) => setEditStudentId(id)}
         />
+        {editStudentId !== null && (
+          <EditStudentDialog
+            open={true}
+            onOpenChange={(open) => { if (!open) setEditStudentId(null); }}
+            studentId={editStudentId}
+            onSaved={() => {
+              setEditStudentId(null);
+              // Force re-mount of StudentDetail to refresh data
+              const id = selectedStudentId;
+              setSelectedStudentId(null);
+              setTimeout(() => setSelectedStudentId(id), 50);
+            }}
+          />
+        )}
       </DashboardLayout>
     );
   }

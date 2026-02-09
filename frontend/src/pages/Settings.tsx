@@ -11,10 +11,21 @@ import { Label } from '@/components/ui/label';
 import { Switch } from '@/components/ui/switch';
 import { Separator } from '@/components/ui/separator';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { Settings as SettingsIcon, Bell, Shield, Database, Loader2, AlertCircle, Save } from 'lucide-react';
+import { Settings as SettingsIcon, Bell, Shield, Database, Loader2, AlertCircle, Save, Menu, Image, Plus, Trash2, GripVertical, ExternalLink } from 'lucide-react';
 import { toast } from 'sonner';
 import { useSupabaseQuery } from '@/hooks/useSupabaseQuery';
 import { fetchSettings, updateSetting } from '@/lib/api';
+
+interface MenuItem {
+  title: string;
+  link: string;
+  target?: string;
+}
+
+interface FeaturedImage {
+  image: string;
+  link: string;
+}
 
 export default function Settings() {
   const { data: settingsData, loading, error, refetch } = useSupabaseQuery(
@@ -28,6 +39,15 @@ export default function Settings() {
   const [phone, setPhone] = useState('');
   const [saving, setSaving] = useState(false);
 
+  // Menu settings state
+  const [sidebarItems, setSidebarItems] = useState<MenuItem[]>([]);
+  const [footerItems, setFooterItems] = useState<MenuItem[]>([]);
+  const [savingMenu, setSavingMenu] = useState(false);
+
+  // Featured images state
+  const [featuredImages, setFeaturedImages] = useState<FeaturedImage[]>([]);
+  const [savingImages, setSavingImages] = useState(false);
+
   // Populate form when settings load
   useEffect(() => {
     if (settingsData) {
@@ -35,8 +55,60 @@ export default function Settings() {
       setRtoCode(settingsData['rto_code'] ?? '');
       setContactEmail(settingsData['contact_email'] ?? settingsData['admin_email'] ?? '');
       setPhone(settingsData['phone'] ?? '');
+
+      // Parse menu settings
+      try {
+        const sidebar = settingsData['sidebar'];
+        if (sidebar) setSidebarItems(typeof sidebar === 'string' ? JSON.parse(sidebar) : sidebar);
+      } catch { setSidebarItems([]); }
+      try {
+        const footer = settingsData['footer'];
+        if (footer) setFooterItems(typeof footer === 'string' ? JSON.parse(footer) : footer);
+      } catch { setFooterItems([]); }
+
+      // Parse featured images
+      try {
+        const fi = settingsData['featured_images'];
+        if (fi) setFeaturedImages(typeof fi === 'string' ? JSON.parse(fi) : fi);
+      } catch { setFeaturedImages([]); }
     }
   }, [settingsData]);
+
+  const handleSaveMenu = async () => {
+    setSavingMenu(true);
+    try {
+      const cleanSidebar = sidebarItems.filter(i => i.title || i.link);
+      const cleanFooter = footerItems.filter(i => i.title || i.link);
+      await Promise.all([
+        updateSetting('sidebar', JSON.stringify(cleanSidebar)),
+        updateSetting('footer', JSON.stringify(cleanFooter)),
+      ]);
+      toast.success('Menu settings saved successfully');
+      refetch();
+    } catch {
+      toast.error('Failed to save menu settings');
+    } finally {
+      setSavingMenu(false);
+    }
+  };
+
+  const handleSaveFeaturedImages = async () => {
+    setSavingImages(true);
+    try {
+      const clean = featuredImages.filter(i => i.image && i.link);
+      await updateSetting('featured_images', JSON.stringify(clean));
+      toast.success('Featured images saved successfully');
+      refetch();
+    } catch {
+      toast.error('Failed to save featured images');
+    } finally {
+      setSavingImages(false);
+    }
+  };
+
+  const updateMenuItem = (list: MenuItem[], setList: React.Dispatch<React.SetStateAction<MenuItem[]>>, index: number, field: keyof MenuItem, value: string) => {
+    setList(list.map((item, i) => i === index ? { ...item, [field]: value } : item));
+  };
 
   const handleSaveGeneral = async () => {
     setSaving(true);
@@ -76,8 +148,10 @@ export default function Settings() {
           </Card>
         ) : (
           <Tabs defaultValue="general" className="space-y-4">
-            <TabsList className="bg-[#f1f5f9] p-1 border border-[#e2e8f0]">
+            <TabsList className="bg-[#f1f5f9] p-1 border border-[#e2e8f0] flex-wrap">
               <TabsTrigger value="general" className="text-xs data-[state=active]:bg-white"><SettingsIcon className="w-3.5 h-3.5 mr-1.5" /> General</TabsTrigger>
+              <TabsTrigger value="menu" className="text-xs data-[state=active]:bg-white"><Menu className="w-3.5 h-3.5 mr-1.5" /> Menu</TabsTrigger>
+              <TabsTrigger value="featured-images" className="text-xs data-[state=active]:bg-white"><Image className="w-3.5 h-3.5 mr-1.5" /> Featured Images</TabsTrigger>
               <TabsTrigger value="notifications" className="text-xs data-[state=active]:bg-white"><Bell className="w-3.5 h-3.5 mr-1.5" /> Notifications</TabsTrigger>
               <TabsTrigger value="security" className="text-xs data-[state=active]:bg-white"><Shield className="w-3.5 h-3.5 mr-1.5" /> Security</TabsTrigger>
               <TabsTrigger value="integrations" className="text-xs data-[state=active]:bg-white"><Database className="w-3.5 h-3.5 mr-1.5" /> Integrations</TabsTrigger>
@@ -156,6 +230,159 @@ export default function Settings() {
                   >
                     {saving ? <Loader2 className="w-4 h-4 mr-1.5 animate-spin" /> : <Save className="w-4 h-4 mr-1.5" />}
                     {saving ? 'Saving...' : 'Save Changes'}
+                  </Button>
+                </div>
+              </Card>
+            </TabsContent>
+
+            {/* ── Menu Settings Tab ── */}
+            <TabsContent value="menu">
+              <Card className="p-6 border-[#e2e8f0]/50 shadow-card space-y-6">
+                {/* Sidebar Menu */}
+                <div>
+                  <h3 className="font-heading font-semibold text-[#1e293b] mb-1">Sidebar Menu</h3>
+                  <p className="text-sm text-[#94a3b8] mb-4">Configure the sidebar navigation links</p>
+                  <div className="space-y-2">
+                    {sidebarItems.map((item, idx) => (
+                      <div key={idx} className="flex items-center gap-2 p-2 rounded-lg border border-[#e2e8f0] bg-[#f8fafc]">
+                        <GripVertical className="w-4 h-4 text-[#94a3b8] flex-shrink-0" />
+                        <Input
+                          placeholder="Title"
+                          value={item.title}
+                          onChange={(e) => updateMenuItem(sidebarItems, setSidebarItems, idx, 'title', e.target.value)}
+                          className="flex-1 h-8 text-sm border-[#e2e8f0]"
+                        />
+                        <Input
+                          placeholder="URL"
+                          value={item.link}
+                          onChange={(e) => updateMenuItem(sidebarItems, setSidebarItems, idx, 'link', e.target.value)}
+                          className="flex-1 h-8 text-sm border-[#e2e8f0]"
+                        />
+                        <select
+                          className="h-8 rounded-md border border-[#e2e8f0] px-2 text-xs bg-white"
+                          value={item.target || ''}
+                          onChange={(e) => updateMenuItem(sidebarItems, setSidebarItems, idx, 'target', e.target.value)}
+                        >
+                          <option value="">Same tab</option>
+                          <option value="_blank">New tab</option>
+                        </select>
+                        <Button variant="ghost" size="sm" className="h-8 w-8 p-0 text-[#94a3b8] hover:text-red-500" onClick={() => setSidebarItems(sidebarItems.filter((_, i) => i !== idx))}>
+                          <Trash2 className="w-3.5 h-3.5" />
+                        </Button>
+                      </div>
+                    ))}
+                    <Button variant="outline" size="sm" onClick={() => setSidebarItems([...sidebarItems, { title: '', link: '', target: '' }])}>
+                      <Plus className="w-3.5 h-3.5 mr-1" /> Add Sidebar Item
+                    </Button>
+                  </div>
+                </div>
+
+                <Separator />
+
+                {/* Footer Menu */}
+                <div>
+                  <h3 className="font-heading font-semibold text-[#1e293b] mb-1">Footer Menu</h3>
+                  <p className="text-sm text-[#94a3b8] mb-4">Configure the footer navigation links</p>
+                  <div className="space-y-2">
+                    {footerItems.map((item, idx) => (
+                      <div key={idx} className="flex items-center gap-2 p-2 rounded-lg border border-[#e2e8f0] bg-[#f8fafc]">
+                        <GripVertical className="w-4 h-4 text-[#94a3b8] flex-shrink-0" />
+                        <Input
+                          placeholder="Title"
+                          value={item.title}
+                          onChange={(e) => updateMenuItem(footerItems, setFooterItems, idx, 'title', e.target.value)}
+                          className="flex-1 h-8 text-sm border-[#e2e8f0]"
+                        />
+                        <Input
+                          placeholder="URL"
+                          value={item.link}
+                          onChange={(e) => updateMenuItem(footerItems, setFooterItems, idx, 'link', e.target.value)}
+                          className="flex-1 h-8 text-sm border-[#e2e8f0]"
+                        />
+                        <select
+                          className="h-8 rounded-md border border-[#e2e8f0] px-2 text-xs bg-white"
+                          value={item.target || ''}
+                          onChange={(e) => updateMenuItem(footerItems, setFooterItems, idx, 'target', e.target.value)}
+                        >
+                          <option value="">Same tab</option>
+                          <option value="_blank">New tab</option>
+                        </select>
+                        <Button variant="ghost" size="sm" className="h-8 w-8 p-0 text-[#94a3b8] hover:text-red-500" onClick={() => setFooterItems(footerItems.filter((_, i) => i !== idx))}>
+                          <Trash2 className="w-3.5 h-3.5" />
+                        </Button>
+                      </div>
+                    ))}
+                    <Button variant="outline" size="sm" onClick={() => setFooterItems([...footerItems, { title: '', link: '', target: '' }])}>
+                      <Plus className="w-3.5 h-3.5 mr-1" /> Add Footer Item
+                    </Button>
+                  </div>
+                </div>
+
+                <div className="flex justify-end">
+                  <Button className="bg-[#3b82f6] hover:bg-[#2563eb] text-white" onClick={handleSaveMenu} disabled={savingMenu}>
+                    {savingMenu ? <Loader2 className="w-4 h-4 mr-1.5 animate-spin" /> : <Save className="w-4 h-4 mr-1.5" />}
+                    {savingMenu ? 'Saving...' : 'Save Menu Settings'}
+                  </Button>
+                </div>
+              </Card>
+            </TabsContent>
+
+            {/* ── Featured Images Tab ── */}
+            <TabsContent value="featured-images">
+              <Card className="p-6 border-[#e2e8f0]/50 shadow-card space-y-6">
+                <div>
+                  <h3 className="font-heading font-semibold text-[#1e293b] mb-1">Featured Images</h3>
+                  <p className="text-sm text-[#94a3b8] mb-4">Manage featured images displayed on the student dashboard. Each image requires a URL and a link destination.</p>
+                  <div className="space-y-3">
+                    {featuredImages.map((item, idx) => (
+                      <div key={idx} className="flex items-start gap-3 p-3 rounded-lg border border-[#e2e8f0] bg-[#f8fafc]">
+                        <div className="flex-1 space-y-2">
+                          <div>
+                            <Label className="text-xs text-[#64748b]">Image URL</Label>
+                            <Input
+                              placeholder="https://example.com/image.jpg"
+                              value={item.image}
+                              onChange={(e) => setFeaturedImages(featuredImages.map((fi, i) => i === idx ? { ...fi, image: e.target.value } : fi))}
+                              className="h-8 text-sm border-[#e2e8f0]"
+                            />
+                          </div>
+                          <div>
+                            <Label className="text-xs text-[#64748b]">Link URL</Label>
+                            <Input
+                              placeholder="https://example.com/page"
+                              value={item.link}
+                              onChange={(e) => setFeaturedImages(featuredImages.map((fi, i) => i === idx ? { ...fi, link: e.target.value } : fi))}
+                              className="h-8 text-sm border-[#e2e8f0]"
+                            />
+                          </div>
+                        </div>
+                        {item.image && (
+                          <div className="w-24 h-16 rounded-md border border-[#e2e8f0] overflow-hidden flex-shrink-0 bg-white">
+                            <img src={item.image} alt="Preview" className="w-full h-full object-cover" onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; }} />
+                          </div>
+                        )}
+                        <div className="flex flex-col gap-1 flex-shrink-0">
+                          {item.link && (
+                            <a href={item.link} target="_blank" rel="noopener noreferrer" className="inline-flex items-center justify-center h-8 w-8 rounded-md text-[#94a3b8] hover:text-[#3b82f6] hover:bg-[#eff6ff]">
+                              <ExternalLink className="w-3.5 h-3.5" />
+                            </a>
+                          )}
+                          <Button variant="ghost" size="sm" className="h-8 w-8 p-0 text-[#94a3b8] hover:text-red-500" onClick={() => setFeaturedImages(featuredImages.filter((_, i) => i !== idx))}>
+                            <Trash2 className="w-3.5 h-3.5" />
+                          </Button>
+                        </div>
+                      </div>
+                    ))}
+                    <Button variant="outline" size="sm" onClick={() => setFeaturedImages([...featuredImages, { image: '', link: '' }])}>
+                      <Plus className="w-3.5 h-3.5 mr-1" /> Add Featured Image
+                    </Button>
+                  </div>
+                </div>
+
+                <div className="flex justify-end">
+                  <Button className="bg-[#3b82f6] hover:bg-[#2563eb] text-white" onClick={handleSaveFeaturedImages} disabled={savingImages}>
+                    {savingImages ? <Loader2 className="w-4 h-4 mr-1.5 animate-spin" /> : <Save className="w-4 h-4 mr-1.5" />}
+                    {savingImages ? 'Saving...' : 'Save Featured Images'}
                   </Button>
                 </div>
               </Card>
