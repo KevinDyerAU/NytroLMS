@@ -18,6 +18,9 @@ export interface AuthUser {
 /**
  * Extracts and validates the auth token from the request.
  * Returns the authenticated user info or an error response.
+ *
+ * Optimized: uses a single DB function (get_user_auth_context) to fetch
+ * user ID, role, and permissions in one round-trip instead of 6.
  */
 export async function requireAuth(
   req: Request
@@ -28,6 +31,9 @@ export async function requireAuth(
   }
 
   const userClient = getUserClient(authHeader);
+  const adminClient = getAdminClient();
+
+  // 1. Verify JWT (required network call)
   const {
     data: { user },
     error,
@@ -37,64 +43,20 @@ export async function requireAuth(
     return errorResponse(401, 'Invalid or expired token');
   }
 
-  // Look up the LMS user record
-  const adminClient = getAdminClient();
-  const { data: lmsUser } = await adminClient
-    .from('users')
-    .select('id')
-    .eq('email', user.email!)
-    .maybeSingle();
+  // 2. Single RPC call to get user_id + role + permissions
+  const { data: ctx, error: rpcError } = await adminClient.rpc(
+    'get_user_auth_context',
+    { p_email: user.email }
+  );
 
-  const lmsUserId = lmsUser?.id ?? null;
-
-  // Get role
-  let role = 'Student';
-  if (lmsUserId) {
-    const { data: roleData } = await adminClient
-      .from('model_has_roles')
-      .select('role_id')
-      .eq('model_id', lmsUserId)
-      .eq('model_type', 'App\\Models\\User')
-      .maybeSingle();
-
-    if (roleData?.role_id) {
-      const { data: roleInfo } = await adminClient
-        .from('roles')
-        .select('name')
-        .eq('id', roleData.role_id)
-        .single();
-      if (roleInfo?.name) role = roleInfo.name;
-    }
+  if (rpcError) {
+    console.error('Auth context RPC error:', rpcError.message);
+    return errorResponse(500, 'Failed to load auth context');
   }
 
-  // Get permissions
-  const permissions: string[] = [];
-  if (lmsUserId) {
-    const { data: roleData } = await adminClient
-      .from('model_has_roles')
-      .select('role_id')
-      .eq('model_id', lmsUserId)
-      .eq('model_type', 'App\\Models\\User')
-      .maybeSingle();
-
-    if (roleData?.role_id) {
-      const { data: permData } = await adminClient
-        .from('role_has_permissions')
-        .select('permission_id')
-        .eq('role_id', roleData.role_id);
-
-      if (permData && permData.length > 0) {
-        const permIds = permData.map((p) => p.permission_id);
-        const { data: permNames } = await adminClient
-          .from('permissions')
-          .select('name')
-          .in('id', permIds);
-        if (permNames) {
-          permissions.push(...permNames.map((p) => p.name));
-        }
-      }
-    }
-  }
+  const lmsUserId = ctx?.user_id ?? null;
+  const role = ctx?.role ?? 'Student';
+  const permissions: string[] = ctx?.permissions ?? [];
 
   return {
     user: {

@@ -100,16 +100,17 @@ async function handleListStudents(url: URL, user: AuthUser): Promise<Response> {
   const { data: users, error, count } = await query;
   if (error) return errorResponse(500, 'Failed to fetch students: ' + error.message);
 
-  // Get roles for all returned users
+  // Parallel fetch: role assignments + role names
   const userIds = (users ?? []).map((u: any) => u.id);
-  const { data: roleAssignments } = await adminClient
-    .from('model_has_roles')
-    .select('model_id, role_id')
-    .in('model_id', userIds);
-
-  const { data: roles } = await adminClient
-    .from('roles')
-    .select('id, name');
+  const [{ data: roleAssignments }, { data: roles }] = await Promise.all([
+    adminClient
+      .from('model_has_roles')
+      .select('model_id, role_id')
+      .in('model_id', userIds.length > 0 ? userIds : [0]),
+    adminClient
+      .from('roles')
+      .select('id, name'),
+  ]);
 
   const roleMap = new Map<number, string>();
   (roles ?? []).forEach((r: any) => roleMap.set(r.id, r.name));
@@ -203,71 +204,47 @@ async function handleGetStudent(studentId: number, user: AuthUser): Promise<Resp
     }
   }
 
-  // Get user record
-  const { data: student, error } = await adminClient
-    .from('users')
-    .select('*')
-    .eq('id', studentId)
-    .single();
+  // Parallel fetch: user, details, role, enrolments, progress — all at once
+  const [studentResult, detailsResult, roleJoinResult, enrolmentsResult, progressResult] = await Promise.all([
+    adminClient.from('users').select('*').eq('id', studentId).single(),
+    adminClient.from('user_details').select('*').eq('user_id', studentId).maybeSingle(),
+    adminClient.from('model_has_roles').select('role_id, roles(name)')
+      .eq('model_id', studentId).eq('model_type', 'App\\Models\\User').maybeSingle(),
+    adminClient.from('student_course_enrolments')
+      .select('id, course_id, status, course_start_at, course_ends_at, course_completed_at, is_main_course, created_at')
+      .eq('user_id', studentId).order('created_at', { ascending: false }),
+    adminClient.from('course_progress').select('course_id, percentage').eq('user_id', studentId),
+  ]);
 
-  if (error || !student) {
+  const student = studentResult.data;
+  if (studentResult.error || !student) {
     return errorResponse(404, 'Student not found');
   }
 
-  // Get user details
-  const { data: details } = await adminClient
-    .from('user_details')
-    .select('*')
-    .eq('user_id', studentId)
-    .maybeSingle();
+  const details = detailsResult.data;
+  const roleName = (roleJoinResult.data as any)?.roles?.name ?? 'Student';
+  const enrolments = enrolmentsResult.data ?? [];
+  const progress = progressResult.data ?? [];
 
-  // Get role
-  const { data: roleData } = await adminClient
-    .from('model_has_roles')
-    .select('role_id')
-    .eq('model_id', studentId)
-    .eq('model_type', 'App\\Models\\User')
-    .maybeSingle();
+  // Parallel fetch: course titles + companies (depend on enrolments/details results)
+  const courseIds = [...new Set(enrolments.map((e: any) => e.course_id))];
+  const signupLinkId = details?.signup_links_id ?? 0;
 
-  let roleName = 'Student';
-  if (roleData?.role_id) {
-    const { data: roleInfo } = await adminClient
-      .from('roles')
-      .select('name')
-      .eq('id', roleData.role_id)
-      .single();
-    if (roleInfo?.name) roleName = roleInfo.name;
-  }
-
-  // Get enrolments with course info
-  const { data: enrolments } = await adminClient
-    .from('student_course_enrolments')
-    .select('id, course_id, status, course_start_at, course_ends_at, course_completed_at, is_main_course, created_at')
-    .eq('user_id', studentId)
-    .order('created_at', { ascending: false });
-
-  // Get course titles for enrolments
-  const courseIds = [...new Set((enrolments ?? []).map((e: any) => e.course_id))];
-  const { data: courses } = await adminClient
-    .from('courses')
-    .select('id, title')
-    .in('id', courseIds.length > 0 ? courseIds : [0]);
+  const [coursesResult, companyLinksResult] = await Promise.all([
+    adminClient.from('courses').select('id, title').in('id', courseIds.length > 0 ? courseIds : [0]),
+    adminClient.from('signup_links').select('company_id').eq('id', signupLinkId),
+  ]);
 
   const courseMap = new Map<number, string>();
-  (courses ?? []).forEach((c: any) => courseMap.set(c.id, c.title));
+  (coursesResult.data ?? []).forEach((c: any) => courseMap.set(c.id, c.title));
 
-  const enrichedEnrolments = (enrolments ?? []).map((e: any) => ({
+  const enrichedEnrolments = enrolments.map((e: any) => ({
     ...e,
     course_title: courseMap.get(e.course_id) ?? 'Unknown',
   }));
 
-  // Get companies
-  const { data: companyLinks } = await adminClient
-    .from('signup_links')
-    .select('company_id')
-    .eq('id', details?.signup_links_id ?? 0);
-
   let companies: any[] = [];
+  const companyLinks = companyLinksResult.data;
   if (companyLinks && companyLinks.length > 0) {
     const compIds = companyLinks.map((cl: any) => cl.company_id);
     const { data: companyData } = await adminClient
@@ -276,12 +253,6 @@ async function handleGetStudent(studentId: number, user: AuthUser): Promise<Resp
       .in('id', compIds);
     companies = companyData ?? [];
   }
-
-  // Get course progress
-  const { data: progress } = await adminClient
-    .from('course_progress')
-    .select('course_id, percentage')
-    .eq('user_id', studentId);
 
   const progressMap = new Map<number, string>();
   (progress ?? []).forEach((p: any) => progressMap.set(p.course_id, p.percentage));

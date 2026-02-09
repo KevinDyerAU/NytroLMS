@@ -12,6 +12,8 @@ interface QueryState<T> {
   refetch: () => void;
 }
 
+const QUERY_TIMEOUT_MS = 10000; // 10 seconds
+
 export function useSupabaseQuery<T>(
   queryFn: () => Promise<T>,
   deps: unknown[] = []
@@ -31,8 +33,13 @@ export function useSupabaseQuery<T>(
     setLoading(true);
     setError(null);
 
+    // Create a timeout promise
+    const timeoutPromise = new Promise<never>((_, reject) =>
+      setTimeout(() => reject(new Error('Query timed out after 10 seconds')), QUERY_TIMEOUT_MS)
+    );
+
     try {
-      const result = await queryFn();
+      const result = await Promise.race([queryFn(), timeoutPromise]);
       if (mountedRef.current) {
         setData(result);
         setError(null);

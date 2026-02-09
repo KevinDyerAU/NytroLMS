@@ -207,8 +207,8 @@ export default function Reports() {
                               <p className="text-sm font-medium text-[#1e293b]">{report.student_details ? (() => { try { const d = JSON.parse(report.student_details); return d?.name ?? d?.first_name ?? '—'; } catch { return report.student_details; } })() : '—'}</p>
                               <p className="text-xs text-[#94a3b8]">{report.student_details ? (() => { try { const d = JSON.parse(report.student_details); return d?.email ?? ''; } catch { return ''; } })() : ''}</p>
                             </td>
-                            <td className="px-4 py-3 hidden md:table-cell text-sm text-[#64748b]">{(report as any).company_name ?? (report.company_details ? JSON.parse(report.company_details)?.name : '—')}</td>
-                            <td className="px-4 py-3 hidden lg:table-cell text-sm text-[#64748b]">{(report as any).course_name ?? (report.course_details ? JSON.parse(report.course_details)?.title : '—')}</td>
+                            <td className="px-4 py-3 hidden md:table-cell text-sm text-[#64748b]">{(report as any).company_name ?? (report.company_details ? (() => { try { return JSON.parse(report.company_details)?.name; } catch { return report.company_details; } })() : '—')}</td>
+                            <td className="px-4 py-3 hidden lg:table-cell text-sm text-[#64748b]">{(report as any).course_name ?? (report.course_details ? (() => { try { return JSON.parse(report.course_details)?.title; } catch { return report.course_details; } })() : '—')}</td>
                             <td className="px-4 py-3">
                               <Badge variant="outline" className={`text-xs font-medium ${statusColors[report.student_status] ?? 'bg-[#f1f5f9] text-[#64748b] border-[#64748b]/20'}`}>
                                 {report.student_status ?? 'Unknown'}

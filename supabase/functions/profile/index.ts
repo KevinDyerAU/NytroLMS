@@ -49,29 +49,29 @@ async function handleGetProfile(user: AuthUser): Promise<Response> {
 
   const adminClient = getAdminClient();
 
-  // Get user record
-  const { data: lmsUser, error: userError } = await adminClient
-    .from('users')
-    .select('id, first_name, last_name, username, email, study_type, is_active, userable_type, created_at')
-    .eq('id', user.lmsUserId)
-    .single();
+  // Parallel fetch: user record + details + enrolment count
+  const [userResult, detailsResult, enrolmentResult] = await Promise.all([
+    adminClient
+      .from('users')
+      .select('id, first_name, last_name, username, email, study_type, is_active, userable_type, created_at')
+      .eq('id', user.lmsUserId)
+      .single(),
+    adminClient
+      .from('user_details')
+      .select('*')
+      .eq('user_id', user.lmsUserId)
+      .maybeSingle(),
+    adminClient
+      .from('student_course_enrolments')
+      .select('*', { count: 'exact', head: true })
+      .eq('user_id', user.lmsUserId),
+  ]);
 
-  if (userError || !lmsUser) {
+  if (userResult.error || !userResult.data) {
     return errorResponse(404, 'User not found');
   }
 
-  // Get user details
-  const { data: details } = await adminClient
-    .from('user_details')
-    .select('*')
-    .eq('user_id', user.lmsUserId)
-    .maybeSingle();
-
-  // Get enrolment count
-  const { count: enrolmentCount } = await adminClient
-    .from('student_course_enrolments')
-    .select('*', { count: 'exact', head: true })
-    .eq('user_id', user.lmsUserId);
+  const lmsUser = userResult.data;
 
   return jsonResponse({
     id: lmsUser.id,
@@ -86,8 +86,8 @@ async function handleGetProfile(user: AuthUser): Promise<Response> {
     role: user.role,
     permissions: user.permissions,
     supabase_id: user.supabaseId,
-    details: details ?? null,
-    enrolment_count: enrolmentCount ?? 0,
+    details: detailsResult.data ?? null,
+    enrolment_count: enrolmentResult.count ?? 0,
   });
 }
 
