@@ -900,6 +900,60 @@ export async function toggleNotePin(noteId: number, isPinned: boolean): Promise<
   }
 }
 
+// ─── Company Notes ───────────────────────────────────────────────────────────
+
+export async function fetchCompanyNotes(companyId: number): Promise<StudentNote[]> {
+  assertConfigured();
+  try {
+    const { data, error } = await supabase
+      .from('notes')
+      .select('*')
+      .eq('subject_type', 'App\\Models\\Company')
+      .eq('subject_id', companyId)
+      .order('is_pinned', { ascending: false })
+      .order('created_at', { ascending: false });
+    if (error) throw error;
+
+    const authorIds = Array.from(new Set((data ?? []).map(n => n.user_id)));
+    let authorMap = new Map<number, string>();
+    if (authorIds.length > 0) {
+      const { data: authors } = await supabase
+        .from('users')
+        .select('id, first_name, last_name')
+        .in('id', authorIds);
+      (authors ?? []).forEach(a => authorMap.set(a.id, `${a.first_name} ${a.last_name}`));
+    }
+
+    return (data ?? []).map(n => ({
+      ...n,
+      author_name: authorMap.get(n.user_id) ?? 'Unknown',
+    }));
+  } catch (e) {
+    handleError(e, 'Failed to fetch company notes');
+  }
+}
+
+export async function createCompanyNote(companyId: number, noteBody: string, authorId: number): Promise<StudentNote> {
+  assertConfigured();
+  try {
+    const { data, error } = await supabase
+      .from('notes')
+      .insert({
+        user_id: authorId,
+        note_body: noteBody,
+        is_pinned: 0,
+        subject_type: 'App\\Models\\Company',
+        subject_id: companyId,
+      })
+      .select('*')
+      .single();
+    if (error) throw error;
+    return data;
+  } catch (e) {
+    handleError(e, 'Failed to create company note');
+  }
+}
+
 export async function fetchAvailableCourses(): Promise<{ id: number; title: string; category: string | null; status: string }[]> {
   assertConfigured();
   try {

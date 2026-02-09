@@ -19,13 +19,20 @@ import {
   deleteSignupLink,
   toggleSignupLinkActive,
   fetchAvailableCourses,
+  fetchCompanyNotes,
+  createCompanyNote,
+  updateStudentNote,
+  deleteStudentNote,
+  toggleNotePin,
   type CompanyFullDetail as CompanyFullDetailType,
+  type StudentNote,
 } from '@/lib/api';
 import { toast } from 'sonner';
 import {
   ArrowLeft, Edit, Building2, Users, Mail, Phone, MapPin,
   Link2, UserCircle, Loader2, Hash, Plus, Trash2, Copy,
-  ExternalLink, ToggleLeft, ToggleRight,
+  ExternalLink, ToggleLeft, ToggleRight, StickyNote, Pin,
+  Send, Pencil, X, Check,
 } from 'lucide-react';
 
 interface CompanyDetailProps {
@@ -42,6 +49,11 @@ export function CompanyDetail({ companyId, onBack, onEdit }: CompanyDetailProps)
   const [addLinkOpen, setAddLinkOpen] = useState(false);
   const [deletingLinkId, setDeletingLinkId] = useState<number | null>(null);
   const [togglingLinkId, setTogglingLinkId] = useState<number | null>(null);
+  const [notes, setNotes] = useState<StudentNote[]>([]);
+  const [notesLoading, setNotesLoading] = useState(false);
+  const [newNote, setNewNote] = useState('');
+  const [editingNoteId, setEditingNoteId] = useState<number | null>(null);
+  const [editingNoteText, setEditingNoteText] = useState('');
 
   const loadCompany = useCallback(async () => {
     setLoading(true);
@@ -58,6 +70,51 @@ export function CompanyDetail({ companyId, onBack, onEdit }: CompanyDetailProps)
   }, [companyId]);
 
   useEffect(() => { loadCompany(); }, [loadCompany]);
+
+  const loadNotes = useCallback(async () => {
+    setNotesLoading(true);
+    try {
+      const data = await fetchCompanyNotes(companyId);
+      setNotes(data);
+    } catch { /* silent */ }
+    finally { setNotesLoading(false); }
+  }, [companyId]);
+
+  const handleAddNote = async () => {
+    if (!newNote.trim() || !user) return;
+    try {
+      await createCompanyNote(companyId, newNote.trim(), user.id);
+      setNewNote('');
+      toast.success('Note added');
+      loadNotes();
+    } catch { toast.error('Failed to add note'); }
+  };
+
+  const handleDeleteNote = async (noteId: number) => {
+    try {
+      await deleteStudentNote(noteId);
+      setNotes(prev => prev.filter(n => n.id !== noteId));
+      toast.success('Note deleted');
+    } catch { toast.error('Failed to delete note'); }
+  };
+
+  const handleEditNote = async (noteId: number) => {
+    if (!editingNoteText.trim()) return;
+    try {
+      await updateStudentNote(noteId, editingNoteText.trim());
+      setNotes(prev => prev.map(n => n.id === noteId ? { ...n, note_body: editingNoteText.trim() } : n));
+      setEditingNoteId(null);
+      setEditingNoteText('');
+      toast.success('Note updated');
+    } catch { toast.error('Failed to update note'); }
+  };
+
+  const handleTogglePin = async (noteId: number, currentlyPinned: boolean) => {
+    try {
+      await toggleNotePin(noteId, !currentlyPinned);
+      setNotes(prev => prev.map(n => n.id === noteId ? { ...n, is_pinned: currentlyPinned ? 0 : 1 } : n));
+    } catch { toast.error('Failed to update note'); }
+  };
 
   if (loading) {
     return (
@@ -112,6 +169,7 @@ export function CompanyDetail({ companyId, onBack, onEdit }: CompanyDetailProps)
           <TabsTrigger value="students">Students ({company.students.length})</TabsTrigger>
           <TabsTrigger value="leaders">Leaders ({company.leaders.length})</TabsTrigger>
           <TabsTrigger value="links">Signup Links ({company.signup_links.length})</TabsTrigger>
+          <TabsTrigger value="notes" onClick={() => { if (notes.length === 0 && !notesLoading) loadNotes(); }}>Notes</TabsTrigger>
         </TabsList>
 
         {/* ── Overview Tab ── */}
@@ -356,6 +414,119 @@ export function CompanyDetail({ companyId, onBack, onEdit }: CompanyDetailProps)
             creatorId={user?.id ?? 0}
             onSaved={loadCompany}
           />
+        </TabsContent>
+        {/* ── Notes Tab ── */}
+        <TabsContent value="notes" className="mt-4">
+          <Card>
+            <CardHeader>
+              <CardTitle className="text-base text-[#3b82f6]">
+                <StickyNote className="w-4 h-4 inline mr-2" />
+                Company Notes
+              </CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              {/* Add Note Form */}
+              <div className="flex gap-2">
+                <textarea
+                  className="flex-1 min-h-[60px] rounded-md border border-[#e2e8f0] px-3 py-2 text-sm placeholder:text-[#94a3b8] focus:outline-none focus:ring-2 focus:ring-[#3b82f6] focus:border-transparent resize-none"
+                  placeholder="Add a note about this company..."
+                  value={newNote}
+                  onChange={(e) => setNewNote(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) handleAddNote();
+                  }}
+                />
+                <Button
+                  size="sm"
+                  className="bg-[#3b82f6] hover:bg-[#2563eb] text-white self-end"
+                  disabled={!newNote.trim()}
+                  onClick={handleAddNote}
+                >
+                  <Send className="w-4 h-4" />
+                </Button>
+              </div>
+
+              {notesLoading ? (
+                <div className="flex items-center justify-center py-8">
+                  <Loader2 className="w-6 h-6 animate-spin text-[#3b82f6]" />
+                </div>
+              ) : notes.length === 0 ? (
+                <p className="text-sm text-[#94a3b8] text-center py-6">No notes yet. Add one above.</p>
+              ) : (
+                <div className="space-y-3">
+                  {notes.map((note) => (
+                    <div
+                      key={note.id}
+                      className={`border rounded-lg p-4 ${note.is_pinned ? 'border-amber-300 bg-amber-50/50' : 'border-[#e2e8f0]'}`}
+                    >
+                      <div className="flex items-start justify-between gap-2">
+                        <div className="flex-1 min-w-0">
+                          {note.is_pinned === 1 && (
+                            <span className="text-xs text-amber-600 font-medium flex items-center gap-1 mb-1">
+                              <Pin className="w-3 h-3" /> Pinned
+                            </span>
+                          )}
+                          {editingNoteId === note.id ? (
+                            <div className="space-y-2">
+                              <textarea
+                                className="w-full min-h-[60px] rounded-md border border-[#e2e8f0] px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#3b82f6] resize-none"
+                                value={editingNoteText}
+                                onChange={(e) => setEditingNoteText(e.target.value)}
+                                autoFocus
+                              />
+                              <div className="flex gap-1">
+                                <Button size="sm" className="h-7 bg-[#3b82f6] hover:bg-[#2563eb] text-white" onClick={() => handleEditNote(note.id)}>
+                                  <Check className="w-3.5 h-3.5 mr-1" /> Save
+                                </Button>
+                                <Button size="sm" variant="ghost" className="h-7" onClick={() => { setEditingNoteId(null); setEditingNoteText(''); }}>
+                                  <X className="w-3.5 h-3.5 mr-1" /> Cancel
+                                </Button>
+                              </div>
+                            </div>
+                          ) : (
+                            <p className="text-sm text-[#1e293b] whitespace-pre-wrap">{note.note_body}</p>
+                          )}
+                          <p className="text-xs text-[#94a3b8] mt-2">
+                            {note.author_name}
+                            {note.created_at && ` · ${new Date(note.created_at).toLocaleString('en-AU', {
+                              day: 'numeric', month: 'short', year: 'numeric',
+                              hour: '2-digit', minute: '2-digit',
+                            })}`}
+                          </p>
+                        </div>
+                        <div className="flex items-center gap-1 flex-shrink-0">
+                          <Button
+                            variant="ghost" size="sm"
+                            className="text-[#94a3b8] hover:text-[#3b82f6] h-7 w-7 p-0"
+                            onClick={() => { setEditingNoteId(note.id); setEditingNoteText(note.note_body); }}
+                            title="Edit"
+                          >
+                            <Pencil className="w-3.5 h-3.5" />
+                          </Button>
+                          <Button
+                            variant="ghost" size="sm"
+                            className={`h-7 w-7 p-0 ${note.is_pinned ? 'text-amber-500' : 'text-[#94a3b8] hover:text-amber-500'}`}
+                            onClick={() => handleTogglePin(note.id, note.is_pinned === 1)}
+                            title={note.is_pinned ? 'Unpin' : 'Pin'}
+                          >
+                            <Pin className="w-3.5 h-3.5" />
+                          </Button>
+                          <Button
+                            variant="ghost" size="sm"
+                            className="text-[#94a3b8] hover:text-[#ef4444] h-7 w-7 p-0"
+                            onClick={() => handleDeleteNote(note.id)}
+                            title="Delete"
+                          >
+                            <Trash2 className="w-3.5 h-3.5" />
+                          </Button>
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </CardContent>
+          </Card>
         </TabsContent>
       </Tabs>
     </div>
