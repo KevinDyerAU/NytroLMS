@@ -2691,3 +2691,1038 @@ export async function submitQuizAttempt(params: {
     handleError(e, 'Failed to submit quiz attempt');
   }
 }
+
+// ─── Student Training Plan ────────────────────────────────────────────────────
+// Replaces Laravel StudentTrainingPlanService (2631 lines → ~250 lines)
+// Queries source-of-truth tables directly instead of cached JSON
+
+export interface TrainingPlanAttempt {
+  id: number;
+  quiz_id: number;
+  status: string;
+  system_result: string | null;
+  attempt: number;
+  submitted_at: string | null;
+  accessed_at: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface TrainingPlanQuiz {
+  id: number;
+  title: string;
+  topic_id: number;
+  has_checklist: number;
+  status: string;           // ATTEMPTING | SUBMITTED | SATISFACTORY | NOT SATISFACTORY
+  attempts: TrainingPlanAttempt[];
+  checklist?: { status: string; count: number };
+}
+
+export interface TrainingPlanTopic {
+  id: number;
+  title: string;
+  order: number;
+  has_quiz: number;
+  lesson_id: number;
+  status: string;           // ATTEMPTING | SUBMITTED | COMPLETED
+  quizzes: TrainingPlanQuiz[];
+}
+
+export interface TrainingPlanLesson {
+  id: number;
+  title: string;
+  order: number;
+  has_topic: number;
+  has_work_placement: number;
+  release_key: string | null;
+  release_value: string | null;
+  course_id: number;
+  status: string;           // ATTEMPTING | SUBMITTED | COMPLETED
+  is_marked_complete: boolean;
+  marked_at: string | null;
+  is_unlocked: boolean;
+  competency: {
+    is_competent: boolean;
+    competent_on: string | null;
+    notes: any;
+  } | null;
+  work_placement_complete: boolean;
+  topics: TrainingPlanTopic[];
+}
+
+export interface TrainingPlanCourse {
+  course_id: number;
+  course_title: string;
+  course_code: string | null;
+  is_main_course: boolean;
+  category: string | null;
+  status: string;           // ATTEMPTING | SUBMITTED | COMPLETED
+  percentage: number;
+  expected_percentage: number;
+  enrolment: {
+    id: number;
+    status: string;
+    course_start_at: string | null;
+    course_ends_at: string | null;
+    course_completed_at: string | null;
+  } | null;
+  lessons: TrainingPlanLesson[];
+}
+
+export type StudentTrainingPlan = TrainingPlanCourse[];
+
+function parseJsonSafe(text: string | null): any {
+  if (!text) return null;
+  try { return JSON.parse(text); } catch { return null; }
+}
+
+function deriveQuizStatus(attempts: TrainingPlanAttempt[]): string {
+  if (attempts.length === 0) return 'ATTEMPTING';
+  const latest = attempts[0]; // sorted desc by created_at
+  if (latest.status === 'SATISFACTORY') return 'SATISFACTORY';
+  if (['FAIL', 'RETURNED', 'NOT SATISFACTORY'].includes(latest.status)) return 'NOT SATISFACTORY';
+  if (['SUBMITTED', 'EVALUATED', 'MARKED', 'REVIEWING'].includes(latest.status)) return 'SUBMITTED';
+  return 'ATTEMPTING';
+}
+
+function deriveTopicStatus(quizzes: TrainingPlanQuiz[], markedAt: string | null): string {
+  if (markedAt) return 'COMPLETED';
+  if (quizzes.length === 0) return 'ATTEMPTING';
+  const allPassed = quizzes.every(q => q.status === 'SATISFACTORY');
+  if (allPassed) return 'COMPLETED';
+  const anySubmitted = quizzes.some(q => q.status === 'SUBMITTED' || q.status === 'SATISFACTORY');
+  return anySubmitted ? 'SUBMITTED' : 'ATTEMPTING';
+}
+
+function deriveLessonStatus(topics: TrainingPlanTopic[], markedAt: string | null): string {
+  if (markedAt) return 'COMPLETED';
+  if (topics.length === 0) return 'ATTEMPTING';
+  const allCompleted = topics.every(t => t.status === 'COMPLETED');
+  if (allCompleted) return 'COMPLETED';
+  const anySubmitted = topics.some(t => t.status === 'SUBMITTED' || t.status === 'COMPLETED');
+  return anySubmitted ? 'SUBMITTED' : 'ATTEMPTING';
+}
+
+function deriveCourseStatus(lessons: TrainingPlanLesson[]): string {
+  if (lessons.length === 0) return 'ATTEMPTING';
+  const allCompleted = lessons.every(l => l.status === 'COMPLETED');
+  if (allCompleted) return 'COMPLETED';
+  const anySubmitted = lessons.some(l => l.status === 'SUBMITTED' || l.status === 'COMPLETED');
+  return anySubmitted ? 'SUBMITTED' : 'ATTEMPTING';
+}
+
+function computeExpectedPercentage(startAt: string | null, endsAt: string | null): number {
+  if (!startAt || !endsAt) return 0;
+  const start = new Date(startAt).getTime();
+  const end = new Date(endsAt).getTime();
+  const now = Date.now();
+  if (now < start) return 0;
+  if (now >= end) return 100;
+  const total = end - start;
+  if (total <= 0) return 0;
+  return Math.min(100, Math.round(((now - start) / total) * 100));
+}
+
+function computePercentage(lessons: TrainingPlanLesson[]): number {
+  let total = 0;
+  let passed = 0;
+  for (const lesson of lessons) {
+    total++; // lesson itself counts
+    if (lesson.status === 'COMPLETED') passed++;
+    for (const topic of lesson.topics) {
+      total++;
+      if (topic.status === 'COMPLETED') passed++;
+      for (const quiz of topic.quizzes) {
+        total++;
+        if (quiz.status === 'SATISFACTORY') passed++;
+      }
+    }
+  }
+  if (total === 0) return 0;
+  return Math.min(100, Math.round((passed / total) * 100 * 100) / 100);
+}
+
+/**
+ * Fetches the full training plan for a student — the core migration of Laravel's
+ * StudentTrainingPlanService::getTrainingPlan().
+ * Queries source-of-truth tables directly instead of the cached course_progress.details JSON.
+ */
+export async function fetchStudentTrainingPlan(userId: number): Promise<StudentTrainingPlan> {
+  assertConfigured();
+  try {
+    // 1. Fetch enrolments (skip DELIST)
+    const { data: enrolments, error: enrolErr } = await supabase
+      .from('student_course_enrolments')
+      .select('id, course_id, status, course_start_at, course_ends_at, course_completed_at')
+      .eq('user_id', userId)
+      .neq('status', 'DELIST');
+    if (enrolErr) throw enrolErr;
+    if (!enrolments || enrolments.length === 0) return [];
+
+    const courseIds = Array.from(new Set(enrolments.map(e => e.course_id)));
+
+    // 2. Parallel fetch: courses, lessons, quizzes, attempts, competencies, unlocks, progress, checklists, work placements
+    const [
+      coursesRes, lessonsRes, quizzesRes, attemptsRes,
+      competenciesRes, unlocksRes, progressRes, checklistsRes, workPlacementsRes,
+    ] = await Promise.all([
+      supabase.from('courses').select('id, title, slug, is_main_course, category').in('id', courseIds),
+      supabase.from('lessons').select('id, course_id, title, "order", has_topic, has_work_placement, release_key, release_value').in('course_id', courseIds).order('order'),
+      supabase.from('quizzes').select('id, title, topic_id, lesson_id, course_id, has_checklist').in('course_id', courseIds).order('order'),
+      supabase.from('quiz_attempts').select('id, quiz_id, status, system_result, attempt, submitted_at, accessed_at, created_at, updated_at')
+        .eq('user_id', userId).in('course_id', courseIds).order('created_at', { ascending: false }),
+      supabase.from('competencies').select('id, lesson_id, is_competent, competent_on, course_start, lesson_start, lesson_end, notes')
+        .eq('user_id', userId).in('course_id', courseIds),
+      supabase.from('lesson_unlocks').select('lesson_id, course_id, unlocked_at')
+        .eq('user_id', userId).in('course_id', courseIds),
+      supabase.from('course_progress').select('course_id, percentage, details')
+        .eq('user_id', userId).in('course_id', courseIds),
+      supabase.from('student_lms_attachables').select('id, attachable_id, attachable_type, event, properties, student_id')
+        .eq('student_id', userId).eq('event', 'CHECKLIST'),
+      supabase.from('student_lms_attachables').select('id, attachable_id, attachable_type, event, student_id')
+        .eq('student_id', userId).eq('event', 'WORK_PLACEMENT'),
+    ]);
+
+    const courses = coursesRes.data ?? [];
+    const allLessons = lessonsRes.data ?? [];
+    const quizzes = quizzesRes.data ?? [];
+    const attempts = attemptsRes.data ?? [];
+    const competencies = competenciesRes.data ?? [];
+    const unlocks = unlocksRes.data ?? [];
+    const progressRows = progressRes.data ?? [];
+    const checklists = checklistsRes.data ?? [];
+    const workPlacements = workPlacementsRes.data ?? [];
+
+    // Now fetch topics using actual lesson IDs
+    const lessonIds = allLessons.map(l => l.id);
+    const { data: allTopics } = lessonIds.length > 0
+      ? await supabase.from('topics').select('id, lesson_id, title, "order", has_quiz').in('lesson_id', lessonIds).order('order')
+      : { data: [] };
+    const topics = allTopics ?? [];
+
+    // Build lookup maps
+    const courseMap = new Map(courses.map(c => [c.id, c]));
+    const enrolmentMap = new Map(enrolments.map(e => [e.course_id, e]));
+    const lessonsByCourse = new Map<number, typeof allLessons>();
+    allLessons.forEach(l => {
+      if (!lessonsByCourse.has(l.course_id)) lessonsByCourse.set(l.course_id, []);
+      lessonsByCourse.get(l.course_id)!.push(l);
+    });
+    const topicsByLesson = new Map<number, typeof topics>();
+    topics.forEach(t => {
+      if (!topicsByLesson.has(t.lesson_id)) topicsByLesson.set(t.lesson_id, []);
+      topicsByLesson.get(t.lesson_id)!.push(t);
+    });
+    const quizzesByTopic = new Map<number, typeof quizzes>();
+    quizzes.forEach(q => {
+      const key = q.topic_id ?? 0;
+      if (!quizzesByTopic.has(key)) quizzesByTopic.set(key, []);
+      quizzesByTopic.get(key)!.push(q);
+    });
+    const attemptsByQuiz = new Map<number, TrainingPlanAttempt[]>();
+    attempts.forEach(a => {
+      if (!attemptsByQuiz.has(a.quiz_id)) attemptsByQuiz.set(a.quiz_id, []);
+      const list = attemptsByQuiz.get(a.quiz_id)!;
+      if (list.length < 3) list.push(a); // keep latest 3
+    });
+    const competencyByLesson = new Map(competencies.map(c => [c.lesson_id, c]));
+    const unlockSet = new Set(unlocks.map(u => `${u.lesson_id}_${u.course_id}`));
+
+    // Checklist map: quiz_id → checklist items
+    const checklistByQuiz = new Map<number, typeof checklists>();
+    checklists.forEach(cl => {
+      if (cl.attachable_type?.includes('Quiz')) {
+        if (!checklistByQuiz.has(cl.attachable_id)) checklistByQuiz.set(cl.attachable_id, []);
+        checklistByQuiz.get(cl.attachable_id)!.push(cl);
+      }
+    });
+
+    // Work placement map: lesson_id → boolean
+    const wpByLesson = new Set<number>();
+    workPlacements.forEach(wp => {
+      if (wp.attachable_type?.includes('Lesson')) wpByLesson.add(wp.attachable_id);
+    });
+
+    // Parse progress.details for marked_at info (this is where Laravel stored mark-complete timestamps)
+    const progressDetailsMap = new Map<number, any>();
+    progressRows.forEach(p => {
+      const details = parseJsonSafe(p.details);
+      if (details) progressDetailsMap.set(p.course_id, details);
+    });
+
+    // 3. Build hierarchical training plan
+    const plan: StudentTrainingPlan = [];
+
+    for (const courseId of courseIds) {
+      const course = courseMap.get(courseId);
+      const enrolment = enrolmentMap.get(courseId);
+      if (!course || !enrolment) continue;
+
+      const courseLessons = lessonsByCourse.get(courseId) ?? [];
+      const progressDetails = progressDetailsMap.get(courseId);
+
+      const planLessons: TrainingPlanLesson[] = [];
+
+      for (const lesson of courseLessons) {
+        const lessonTopics = topicsByLesson.get(lesson.id) ?? [];
+        const comp = competencyByLesson.get(lesson.id);
+        const isUnlocked = unlockSet.has(`${lesson.id}_${courseId}`);
+
+        // Get marked_at from progress details JSON
+        const lessonDetails = progressDetails?.lessons?.list?.[String(lesson.id)];
+        const markedAt = lessonDetails?.marked_at ?? null;
+
+        const planTopics: TrainingPlanTopic[] = [];
+
+        for (const topic of lessonTopics) {
+          const topicQuizzes = quizzesByTopic.get(topic.id) ?? [];
+          const topicDetails = lessonDetails?.topics?.list?.[String(topic.id)];
+          const topicMarkedAt = topicDetails?.marked_at ?? null;
+
+          const planQuizzes: TrainingPlanQuiz[] = [];
+
+          for (const quiz of topicQuizzes) {
+            const qAttempts = attemptsByQuiz.get(quiz.id) ?? [];
+            const qStatus = deriveQuizStatus(qAttempts);
+
+            // Checklist info
+            const cls = checklistByQuiz.get(quiz.id) ?? [];
+            const checklistInfo = quiz.has_checklist ? {
+              status: cls.length === 0 ? 'NOT ATTEMPTED' : (() => {
+                const latestProps = parseJsonSafe((cls[0] as any)?.properties);
+                return latestProps?.status ?? 'NOT ATTEMPTED';
+              })(),
+              count: cls.length,
+            } : undefined;
+
+            planQuizzes.push({
+              id: quiz.id,
+              title: quiz.title,
+              topic_id: quiz.topic_id,
+              has_checklist: quiz.has_checklist ?? 0,
+              status: qStatus,
+              attempts: qAttempts,
+              checklist: checklistInfo,
+            });
+          }
+
+          const topicStatus = deriveTopicStatus(planQuizzes, topicMarkedAt);
+
+          planTopics.push({
+            id: topic.id,
+            title: topic.title,
+            order: topic.order,
+            has_quiz: topic.has_quiz,
+            lesson_id: topic.lesson_id,
+            status: topicStatus,
+            quizzes: planQuizzes,
+          });
+        }
+
+        const lessonStatus = deriveLessonStatus(planTopics, markedAt);
+
+        planLessons.push({
+          id: lesson.id,
+          title: lesson.title,
+          order: lesson.order,
+          has_topic: lesson.has_topic,
+          has_work_placement: lesson.has_work_placement ?? 0,
+          release_key: lesson.release_key,
+          release_value: lesson.release_value ?? null,
+          course_id: lesson.course_id,
+          status: lessonStatus,
+          is_marked_complete: !!markedAt,
+          marked_at: markedAt,
+          is_unlocked: isUnlocked,
+          competency: comp ? {
+            is_competent: comp.is_competent === 1,
+            competent_on: comp.competent_on,
+            notes: parseJsonSafe(comp.notes),
+          } : null,
+          work_placement_complete: wpByLesson.has(lesson.id),
+          topics: planTopics,
+        });
+      }
+
+      const courseStatus = deriveCourseStatus(planLessons);
+      const percentage = computePercentage(planLessons);
+      const expectedPct = computeExpectedPercentage(enrolment.course_start_at, enrolment.course_ends_at);
+
+      plan.push({
+        course_id: courseId,
+        course_title: course.title,
+        course_code: course.slug,
+        is_main_course: course.is_main_course === 1,
+        category: course.category,
+        status: courseStatus,
+        percentage,
+        expected_percentage: expectedPct,
+        enrolment: {
+          id: enrolment.id,
+          status: enrolment.status,
+          course_start_at: enrolment.course_start_at,
+          course_ends_at: enrolment.course_ends_at,
+          course_completed_at: enrolment.course_completed_at,
+        },
+        lessons: planLessons,
+      });
+    }
+
+    return plan;
+  } catch (e) {
+    handleError(e, 'Failed to fetch student training plan');
+  }
+}
+
+// ─── Training Plan Admin Actions ──────────────────────────────────────────────
+
+/** Mark a lesson as complete for a student (admin action) */
+export async function markLessonComplete(userId: number, lessonId: number, courseId: number): Promise<void> {
+  assertConfigured();
+  try {
+    const now = new Date().toISOString();
+    // Update course_progress.details JSON to set lesson.marked_at
+    const { data: progress } = await supabase
+      .from('course_progress')
+      .select('id, details')
+      .eq('user_id', userId)
+      .eq('course_id', courseId)
+      .single();
+
+    if (progress) {
+      const details = parseJsonSafe(progress.details) ?? {};
+      if (details.lessons?.list?.[String(lessonId)]) {
+        details.lessons.list[String(lessonId)].marked_at = now;
+        details.lessons.list[String(lessonId)].completed = true;
+        details.lessons.list[String(lessonId)].completed_at = now;
+      }
+      await supabase.from('course_progress')
+        .update({ details: JSON.stringify(details), updated_at: now })
+        .eq('id', progress.id);
+    }
+  } catch (e) {
+    handleError(e, 'Failed to mark lesson complete');
+  }
+}
+
+/** Mark a topic as complete for a student (admin action) */
+export async function markTopicComplete(userId: number, topicId: number, lessonId: number, courseId: number): Promise<void> {
+  assertConfigured();
+  try {
+    const now = new Date().toISOString();
+    const { data: progress } = await supabase
+      .from('course_progress')
+      .select('id, details')
+      .eq('user_id', userId)
+      .eq('course_id', courseId)
+      .single();
+
+    if (progress) {
+      const details = parseJsonSafe(progress.details) ?? {};
+      const topicPath = details.lessons?.list?.[String(lessonId)]?.topics?.list?.[String(topicId)];
+      if (topicPath) {
+        topicPath.marked_at = now;
+        topicPath.completed = true;
+        topicPath.completed_at = now;
+      }
+      await supabase.from('course_progress')
+        .update({ details: JSON.stringify(details), updated_at: now })
+        .eq('id', progress.id);
+    }
+  } catch (e) {
+    handleError(e, 'Failed to mark topic complete');
+  }
+}
+
+/** Mark a lesson as competent for a student (admin action) */
+export async function markLessonCompetent(
+  userId: number,
+  lessonId: number,
+  courseId: number,
+  params: { competent_on: string; course_start?: string; lesson_start?: string; lesson_end?: string; notes?: string }
+): Promise<void> {
+  assertConfigured();
+  try {
+    const { error } = await supabase.from('competencies').upsert({
+      user_id: userId,
+      lesson_id: lessonId,
+      course_id: courseId,
+      is_competent: 1,
+      competent_on: params.competent_on,
+      course_start: params.course_start ?? null,
+      lesson_start: params.lesson_start ?? null,
+      lesson_end: params.lesson_end ?? null,
+      notes: params.notes ? JSON.stringify({ added_by: { user_id: userId }, text: params.notes }) : null,
+      updated_at: new Date().toISOString(),
+    }, { onConflict: 'user_id,lesson_id,course_id' });
+    if (error) throw error;
+  } catch (e) {
+    handleError(e, 'Failed to mark lesson competent');
+  }
+}
+
+/** Unlock a lesson for a student (admin action) */
+export async function unlockLesson(lessonId: number, userId: number, courseId: number, unlockedBy: number): Promise<void> {
+  assertConfigured();
+  try {
+    const { error } = await supabase.from('lesson_unlocks').upsert({
+      lesson_id: lessonId,
+      user_id: userId,
+      course_id: courseId,
+      unlocked_by: unlockedBy,
+      unlocked_at: new Date().toISOString(),
+    }, { onConflict: 'lesson_id,user_id,course_id' });
+    if (error) throw error;
+  } catch (e) {
+    handleError(e, 'Failed to unlock lesson');
+  }
+}
+
+/** Lock a lesson for a student (admin action — removes unlock) */
+export async function lockLesson(lessonId: number, userId: number, courseId: number): Promise<void> {
+  assertConfigured();
+  try {
+    const { error } = await supabase.from('lesson_unlocks')
+      .delete()
+      .eq('lesson_id', lessonId)
+      .eq('user_id', userId)
+      .eq('course_id', courseId);
+    if (error) throw error;
+  } catch (e) {
+    handleError(e, 'Failed to lock lesson');
+  }
+}
+
+/** Mark work placement complete for a lesson */
+export async function markWorkPlacementComplete(studentId: number, lessonId: number, causerId: number): Promise<void> {
+  assertConfigured();
+  try {
+    const { error } = await supabase.from('student_lms_attachables').insert({
+      student_id: studentId,
+      event: 'WORK_PLACEMENT',
+      attachable_type: 'App\\Models\\Lesson',
+      attachable_id: lessonId,
+      description: 'Work placement marked complete',
+      causer_type: 'App\\Models\\User',
+      causer_id: causerId,
+    });
+    if (error) throw error;
+  } catch (e) {
+    handleError(e, 'Failed to mark work placement complete');
+  }
+}
+
+// ─── Student Onboarding ───────────────────────────────────────────────────────
+// Replaces Laravel EnrolmentController (1484 lines)
+// 6-step wizard: Personal → Education → Employer → Requirements → PTR Quiz → Agreement
+
+// Config constants matching Laravel's config/ptr.php and config/lln.php
+const PTR_QUIZ_ID = 11112;
+const PTR_EXCLUDED_CATEGORIES = ['non_accredited', 'accelerator'];
+const PTR_IMPLEMENTATION_DATE = '2025-09-01';
+
+export interface OnboardingStep {
+  number: number;
+  title: string;
+  slug: string;
+  completed: boolean;
+  disabled: boolean;
+}
+
+export interface OnboardingState {
+  enrolmentId: number | null;
+  enrolmentKey: string;
+  isActive: boolean;
+  isReEnrolment: boolean;
+  currentStep: number;
+  steps: OnboardingStep[];
+  stepData: Record<string, any>;
+  ptrRequired: boolean;
+  ptrCompleted: boolean;
+  ptrExcluded: boolean;
+}
+
+export interface OnboardingStepData {
+  [key: string]: any;
+}
+
+/**
+ * Fetch the current onboarding state for a user.
+ * Reads the enrolments table + checks PTR requirement.
+ */
+export async function fetchOnboardingState(userId: number): Promise<OnboardingState> {
+  assertConfigured();
+  try {
+    // 1. Find active enrolment (onboard or onboard{N})
+    const { data: enrolments, error: enrolErr } = await supabase
+      .from('enrolments')
+      .select('id, user_id, enrolment_key, enrolment_value, is_active')
+      .eq('user_id', userId)
+      .or('enrolment_key.eq.onboard,enrolment_key.like.onboard%')
+      .order('id', { ascending: false });
+    if (enrolErr) throw enrolErr;
+
+    // Find active enrolment
+    const activeEnrolment = (enrolments ?? []).find(e =>
+      e.is_active === 1 && (e.enrolment_key === 'onboard' || /^onboard\d+$/.test(e.enrolment_key))
+    );
+
+    // Check if re-enrolment (any enrolment has step-6)
+    const isReEnrolment = (enrolments ?? []).some(e => {
+      const val = parseJsonSafe(e.enrolment_value);
+      return val && val['step-6'];
+    });
+
+    // Parse step data
+    const stepData = activeEnrolment ? (parseJsonSafe(activeEnrolment.enrolment_value) ?? {}) : {};
+    const completedSteps = Object.keys(stepData)
+      .filter(k => k.startsWith('step-'))
+      .map(k => parseInt(k.replace('step-', '')));
+    const maxStep = completedSteps.length > 0 ? Math.max(...completedSteps) : 0;
+    const currentStep = maxStep >= 6 ? 0 : maxStep + 1; // 0 means fully complete
+
+    // 2. Check PTR requirement
+    const ptrCheck = await checkPtrRequirement(userId);
+
+    // 3. Build steps
+    const stepDefs = [
+      { number: 1, title: 'Personal Info' },
+      { number: 2, title: 'Education Details' },
+      { number: 3, title: 'Employer Details' },
+      { number: 4, title: 'Requirements' },
+      { number: 5, title: 'Pre-Training Review' },
+      { number: 6, title: 'Agreement' },
+    ];
+    const steps: OnboardingStep[] = stepDefs.map(s => ({
+      ...s,
+      slug: `step-${s.number}`,
+      completed: completedSteps.includes(s.number),
+      disabled: s.number === 5 && (isReEnrolment || ptrCheck.excluded),
+    }));
+
+    return {
+      enrolmentId: activeEnrolment?.id ?? null,
+      enrolmentKey: activeEnrolment?.enrolment_key ?? 'onboard',
+      isActive: !!activeEnrolment?.is_active,
+      isReEnrolment,
+      currentStep: currentStep || 1,
+      steps,
+      stepData,
+      ptrRequired: ptrCheck.required,
+      ptrCompleted: ptrCheck.completed,
+      ptrExcluded: ptrCheck.excluded,
+    };
+  } catch (e) {
+    handleError(e, 'Failed to fetch onboarding state');
+  }
+}
+
+/**
+ * Check whether PTR is required for a user, excluded, or already completed.
+ */
+export async function checkPtrRequirement(userId: number): Promise<{
+  required: boolean;
+  completed: boolean;
+  excluded: boolean;
+  courseId: number | null;
+}> {
+  assertConfigured();
+  try {
+    // Find main course enrolment
+    const { data: mainEnrolment } = await supabase
+      .from('student_course_enrolments')
+      .select('id, course_id, is_main_course, status, created_at')
+      .eq('user_id', userId)
+      .eq('is_main_course', 1)
+      .neq('status', 'DELIST')
+      .limit(1)
+      .single();
+
+    if (!mainEnrolment) {
+      return { required: false, completed: true, excluded: true, courseId: null };
+    }
+
+    // Check course category for exclusion
+    const { data: course } = await supabase
+      .from('courses')
+      .select('id, category, title')
+      .eq('id', mainEnrolment.course_id)
+      .single();
+
+    if (!course) {
+      return { required: false, completed: true, excluded: true, courseId: null };
+    }
+
+    // Check if Semester 2
+    if (course.title?.toLowerCase().includes('semester 2')) {
+      return { required: false, completed: true, excluded: true, courseId: course.id };
+    }
+
+    // Check category exclusion
+    if (PTR_EXCLUDED_CATEGORIES.includes(course.category?.toLowerCase() ?? '')) {
+      return { required: false, completed: true, excluded: true, courseId: course.id };
+    }
+
+    // Check grandfathering
+    const enrolDate = new Date(mainEnrolment.created_at);
+    const implDate = new Date(PTR_IMPLEMENTATION_DATE);
+    if (enrolDate < implDate) {
+      return { required: false, completed: true, excluded: true, courseId: course.id };
+    }
+
+    // PTR is required — check if already completed
+    const { count } = await supabase
+      .from('quiz_attempts')
+      .select('id', { count: 'exact', head: true })
+      .eq('user_id', userId)
+      .eq('quiz_id', PTR_QUIZ_ID)
+      .eq('course_id', mainEnrolment.course_id)
+      .neq('system_result', 'INPROGRESS')
+      .neq('status', 'ATTEMPTING');
+
+    return {
+      required: true,
+      completed: (count ?? 0) > 0,
+      excluded: false,
+      courseId: course.id,
+    };
+  } catch {
+    return { required: false, completed: true, excluded: true, courseId: null };
+  }
+}
+
+/**
+ * Save data for a single onboarding step.
+ * Creates or updates the enrolment record in the enrolments table.
+ */
+export async function saveOnboardingStep(
+  userId: number,
+  step: number,
+  data: OnboardingStepData,
+): Promise<{ enrolmentId: number; nextStep: number }> {
+  assertConfigured();
+  try {
+    const stepKey = `step-${step}`;
+
+    // Find existing active enrolment
+    const { data: existing } = await supabase
+      .from('enrolments')
+      .select('id, enrolment_key, enrolment_value, is_active')
+      .eq('user_id', userId)
+      .or('enrolment_key.eq.onboard,enrolment_key.like.onboard%')
+      .eq('is_active', 1)
+      .order('id', { ascending: false })
+      .limit(1)
+      .single();
+
+    let enrolmentValue: Record<string, any> = {};
+    let enrolmentKey = 'onboard';
+    let enrolmentId: number;
+
+    if (existing) {
+      enrolmentValue = parseJsonSafe(existing.enrolment_value) ?? {};
+      enrolmentKey = existing.enrolment_key;
+      enrolmentValue[stepKey] = data;
+
+      const { error } = await supabase.from('enrolments').update({
+        enrolment_value: JSON.stringify(enrolmentValue),
+        updated_at: new Date().toISOString(),
+      }).eq('id', existing.id);
+      if (error) throw error;
+      enrolmentId = existing.id;
+    } else {
+      // Check if this is a re-enrolment
+      const { data: allEnrolments } = await supabase
+        .from('enrolments')
+        .select('id, enrolment_key, enrolment_value')
+        .eq('user_id', userId)
+        .or('enrolment_key.eq.onboard,enrolment_key.like.onboard%');
+
+      const hasCompleted = (allEnrolments ?? []).some(e => {
+        const val = parseJsonSafe(e.enrolment_value);
+        return val && val['step-6'];
+      });
+
+      if (hasCompleted) {
+        // Determine next enrolment key
+        const keys = (allEnrolments ?? []).map(e => e.enrolment_key);
+        let maxNum = 0;
+        for (const k of keys) {
+          if (k === 'onboard') maxNum = Math.max(maxNum, 1);
+          const m = k.match(/^onboard(\d+)$/);
+          if (m) maxNum = Math.max(maxNum, parseInt(m[1]));
+        }
+        enrolmentKey = maxNum === 0 ? 'onboard2' : `onboard${maxNum + 1}`;
+      }
+
+      enrolmentValue[stepKey] = data;
+      const { data: newEnrolment, error } = await supabase.from('enrolments').insert({
+        user_id: userId,
+        enrolment_key: enrolmentKey,
+        enrolment_value: JSON.stringify(enrolmentValue),
+        is_active: 1,
+      }).select('id').single();
+      if (error) throw error;
+      enrolmentId = newEnrolment.id;
+    }
+
+    // Determine next step
+    let nextStep = step + 1;
+    if (nextStep === 5) {
+      const ptrCheck = await checkPtrRequirement(userId);
+      if (ptrCheck.excluded || ptrCheck.completed) {
+        // Auto-save step 5 as skipped and advance to 6
+        enrolmentValue['step-5'] = { ptr_excluded: true, completed_at: Date.now() };
+        await supabase.from('enrolments').update({
+          enrolment_value: JSON.stringify(enrolmentValue),
+          updated_at: new Date().toISOString(),
+        }).eq('id', enrolmentId);
+        nextStep = 6;
+      }
+    }
+    if (nextStep > 6) nextStep = 0; // complete
+
+    return { enrolmentId, nextStep };
+  } catch (e) {
+    handleError(e, `Failed to save onboarding step ${step}`);
+  }
+}
+
+/**
+ * Complete the onboarding process (step 6 finalization).
+ * Sets user_details.status = 'ONBOARDED', creates activity log + note.
+ */
+export async function completeOnboarding(
+  userId: number,
+  agreementData: { agreement: string; signed_on: string },
+  performedBy: number,
+): Promise<void> {
+  assertConfigured();
+  try {
+    const now = new Date().toISOString();
+
+    // 1. Save step 6 data
+    await saveOnboardingStep(userId, 6, agreementData);
+
+    // 2. Update user_details status to ONBOARDED
+    const { error: detailErr } = await supabase
+      .from('user_details')
+      .update({ status: 'ONBOARDED', onboard_at: now, updated_at: now })
+      .eq('user_id', userId);
+    if (detailErr) throw detailErr;
+
+    // 3. Log activity
+    await supabase.from('activity_log').insert({
+      log_name: 'default',
+      description: 'ENROLMENT',
+      subject_type: 'App\\Models\\User',
+      subject_id: userId,
+      causer_type: 'App\\Models\\User',
+      causer_id: performedBy,
+      properties: JSON.stringify({
+        user_id: userId,
+        status: 'ONBOARDED',
+        onboard_at: now,
+        by: performedBy,
+      }),
+    });
+
+    // 4. Create note
+    await supabase.from('notes').insert({
+      user_id: 0,
+      subject_type: 'App\\Models\\User',
+      subject_id: userId,
+      note_body: `<p>Student completed onboarding on ${new Date().toLocaleDateString('en-AU', { day: 'numeric', month: 'short', year: 'numeric' })}</p>`,
+      data: JSON.stringify({
+        type: 'ONBOARD AGREEMENT SIGNED',
+        message: 'Student completed onboarding',
+        date: now,
+      }),
+    });
+  } catch (e) {
+    handleError(e, 'Failed to complete onboarding');
+  }
+}
+
+/** Fetch countries list for step 1 */
+export async function fetchCountries(): Promise<{ id: number; name: string }[]> {
+  assertConfigured();
+  try {
+    const { data, error } = await supabase
+      .from('countries')
+      .select('id, name')
+      .order('name');
+    if (error) throw error;
+    return data ?? [];
+  } catch (e) {
+    handleError(e, 'Failed to fetch countries');
+  }
+}
+
+/**
+ * Fetch the PTR quiz with questions for step 5.
+ * Returns the quiz data + any in-progress attempt.
+ */
+export async function fetchPtrQuiz(userId: number, courseId: number): Promise<{
+  quiz: { id: number; title: string; questions: any[] } | null;
+  existingAttempt: any | null;
+  alreadyCompleted: boolean;
+}> {
+  assertConfigured();
+  try {
+    // Fetch quiz + questions
+    const { data: quiz } = await supabase
+      .from('quizzes')
+      .select('id, title')
+      .eq('id', PTR_QUIZ_ID)
+      .single();
+
+    if (!quiz) return { quiz: null, existingAttempt: null, alreadyCompleted: false };
+
+    const { data: questions } = await supabase
+      .from('questions')
+      .select('id, title, content, answer_type, options, correct_answer, required, "order", table_structure')
+      .eq('quiz_id', PTR_QUIZ_ID)
+      .is('deleted_at', null)
+      .order('order');
+
+    // Check for existing attempt
+    const { data: attempt } = await supabase
+      .from('quiz_attempts')
+      .select('id, quiz_id, status, system_result, submitted_answers, attempt, course_id')
+      .eq('user_id', userId)
+      .eq('quiz_id', PTR_QUIZ_ID)
+      .eq('course_id', courseId)
+      .order('id', { ascending: false })
+      .limit(1)
+      .single();
+
+    const alreadyCompleted = !!attempt && 
+      attempt.system_result !== 'INPROGRESS' && 
+      attempt.status !== 'ATTEMPTING';
+
+    return {
+      quiz: { ...quiz, questions: questions ?? [] },
+      existingAttempt: attempt?.system_result === 'INPROGRESS' ? attempt : null,
+      alreadyCompleted,
+    };
+  } catch {
+    return { quiz: null, existingAttempt: null, alreadyCompleted: false };
+  }
+}
+
+/**
+ * Save a PTR quiz answer (one question at a time, matching Laravel's approach).
+ */
+export async function savePtrQuizAnswer(
+  userId: number,
+  courseId: number,
+  questionId: number,
+  answer: any,
+): Promise<{ attemptId: number; isComplete: boolean; nextQuestionIndex: number }> {
+  assertConfigured();
+  try {
+    // Find or create attempt
+    const { data: existing } = await supabase
+      .from('quiz_attempts')
+      .select('id, submitted_answers, questions, attempt')
+      .eq('user_id', userId)
+      .eq('quiz_id', PTR_QUIZ_ID)
+      .eq('course_id', courseId)
+      .eq('system_result', 'INPROGRESS')
+      .order('id', { ascending: false })
+      .limit(1)
+      .single();
+
+    let attemptId: number;
+    let submittedAnswers: Record<string, any>;
+    let questionsSnapshot: any[];
+
+    if (existing) {
+      // Update existing attempt
+      submittedAnswers = parseJsonSafe(existing.submitted_answers) ?? {};
+      questionsSnapshot = parseJsonSafe(existing.questions) ?? [];
+      submittedAnswers[String(questionId)] = answer;
+
+      await supabase.from('quiz_attempts').update({
+        submitted_answers: JSON.stringify(submittedAnswers),
+        updated_at: new Date().toISOString(),
+      }).eq('id', existing.id);
+      attemptId = existing.id;
+    } else {
+      // Fetch questions snapshot
+      const { data: questions } = await supabase
+        .from('questions')
+        .select('id, title, content, answer_type, options, correct_answer, required, "order", table_structure')
+        .eq('quiz_id', PTR_QUIZ_ID)
+        .is('deleted_at', null)
+        .order('order');
+
+      questionsSnapshot = questions ?? [];
+      submittedAnswers = { [String(questionId)]: answer };
+
+      // Get quiz metadata for lesson/topic IDs
+      const { data: quizMeta } = await supabase
+        .from('quizzes')
+        .select('lesson_id, topic_id')
+        .eq('id', PTR_QUIZ_ID)
+        .single();
+
+      const { data: newAttempt, error } = await supabase.from('quiz_attempts').insert({
+        user_id: userId,
+        quiz_id: PTR_QUIZ_ID,
+        course_id: courseId,
+        lesson_id: quizMeta?.lesson_id ?? 0,
+        topic_id: quizMeta?.topic_id ?? 0,
+        questions: JSON.stringify(questionsSnapshot),
+        submitted_answers: JSON.stringify(submittedAnswers),
+        attempt: 1,
+        system_result: 'INPROGRESS',
+        status: 'ATTEMPTING',
+      }).select('id').single();
+      if (error) throw error;
+      attemptId = newAttempt.id;
+    }
+
+    // Check completion
+    const answeredCount = Object.keys(submittedAnswers).length;
+    const totalQuestions = questionsSnapshot.length;
+    const isComplete = answeredCount >= totalQuestions;
+
+    if (isComplete) {
+      // Mark as completed
+      await supabase.from('quiz_attempts').update({
+        system_result: 'COMPLETED',
+        status: 'SUBMITTED',
+        submitted_at: new Date().toISOString(),
+        updated_at: new Date().toISOString(),
+      }).eq('id', attemptId);
+    }
+
+    return {
+      attemptId,
+      isComplete,
+      nextQuestionIndex: answeredCount,
+    };
+  } catch (e) {
+    handleError(e, 'Failed to save PTR quiz answer');
+  }
+}
+
+/**
+ * Check if a student has completed LLN for a specific course.
+ */
+export async function checkLlnCompletion(userId: number, courseId: number): Promise<boolean> {
+  assertConfigured();
+  try {
+    const { data } = await supabase
+      .from('student_course_enrolments')
+      .select('has_lln_completed')
+      .eq('user_id', userId)
+      .eq('course_id', courseId)
+      .single();
+    return data?.has_lln_completed === 1;
+  } catch {
+    return false;
+  }
+}

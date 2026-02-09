@@ -8,6 +8,8 @@ import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { StatusBadge } from './StatusBadge';
+import { StudentTrainingPlan } from './StudentTrainingPlan';
+import { OnboardingWizard } from './OnboardingWizard';
 import {
   fetchStudentFullDetail,
   activateStudent,
@@ -360,6 +362,7 @@ export function StudentDetail({ studentId, onBack, onEdit }: StudentDetailProps)
         <TabsList className="bg-white border border-[#e2e8f0] w-full justify-start flex-wrap">
           <TabsTrigger value="overview">Overview</TabsTrigger>
           <TabsTrigger value="courses">Courses & Progress</TabsTrigger>
+          <TabsTrigger value="onboarding">Onboarding</TabsTrigger>
           <TabsTrigger value="documents">Documents</TabsTrigger>
           <TabsTrigger value="notes">Notes</TabsTrigger>
           <TabsTrigger value="activities">Activities</TabsTrigger>
@@ -577,58 +580,21 @@ export function StudentDetail({ studentId, onBack, onEdit }: StudentDetailProps)
           </div>
         </TabsContent>
 
-        {/* ── Courses & Progress Tab ── */}
+        {/* ── Courses & Progress Tab — Full Training Plan ── */}
         <TabsContent value="courses" className="mt-4">
-          <Card>
-            <CardHeader>
-              <CardTitle className="text-base text-[#3b82f6]">Student Progress</CardTitle>
-            </CardHeader>
-            <CardContent>
-              {student.enrolments.length === 0 ? (
-                <p className="text-sm text-[#94a3b8]">No courses enrolled</p>
-              ) : (
-                <div className="space-y-6">
-                  {student.enrolments.map((enrolment) => (
-                    <div key={enrolment.id} className="border-b border-[#e2e8f0] pb-4 last:border-0">
-                      <div className="flex items-center justify-between mb-2">
-                        <h4 className="font-medium text-[#1e293b]">{enrolment.course_title}</h4>
-                        <div className="flex items-center gap-2">
-                          <StatusBadge status={enrolment.status} />
-                          {enrolment.progress_percentage !== null && (
-                            <span className="text-sm font-semibold text-[#3b82f6]">
-                              {Math.round(enrolment.progress_percentage)}%
-                            </span>
-                          )}
-                        </div>
-                      </div>
-                      {enrolment.progress_percentage !== null && (
-                        <div className="w-full bg-[#e2e8f0] rounded-full h-3">
-                          <div
-                            className={`h-3 rounded-full transition-all ${
-                              enrolment.progress_percentage >= 100
-                                ? 'bg-green-500'
-                                : enrolment.progress_percentage >= 50
-                                ? 'bg-[#3b82f6]'
-                                : 'bg-amber-500'
-                            }`}
-                            style={{ width: `${Math.min(100, enrolment.progress_percentage)}%` }}
-                          />
-                        </div>
-                      )}
-                      <div className="flex gap-4 mt-2 text-xs text-[#94a3b8]">
-                        <span>Version: {enrolment.version}</span>
-                        {enrolment.course_completed_at && (
-                          <span className="text-green-600">
-                            Completed: {new Date(enrolment.course_completed_at).toLocaleDateString('en-AU')}
-                          </span>
-                        )}
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              )}
-            </CardContent>
-          </Card>
+          <StudentTrainingPlan
+            studentId={student.id}
+            studentName={`${student.first_name} ${student.last_name}`}
+          />
+        </TabsContent>
+
+        {/* ── Onboarding Tab ── */}
+        <TabsContent value="onboarding" className="mt-4">
+          <OnboardingWizard
+            studentId={student.id}
+            studentName={`${student.first_name} ${student.last_name}`}
+            onComplete={() => { loadStudent(); setActiveTab('overview'); }}
+          />
         </TabsContent>
 
         {/* ── Documents Tab ── */}
