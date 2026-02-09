@@ -12,8 +12,8 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Card } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { buildReport, type GeneratedReport, type ReportFilters } from '@/lib/api';
-import { exportToCSV } from '@/lib/utils';
-import { Loader2, FileText, Download, Calendar, Users, GraduationCap, ClipboardCheck, Building2 } from 'lucide-react';
+import { exportToCSV, exportToPDF } from '@/lib/utils';
+import { Loader2, FileText, Download, FileDown, Calendar, Users, GraduationCap, ClipboardCheck, Building2 } from 'lucide-react';
 import { toast } from 'sonner';
 
 interface ReportBuilderDialogProps {
@@ -177,7 +177,7 @@ export function ReportBuilderDialog({ open, onOpenChange }: ReportBuilderDialogP
     }
   };
 
-  const handleExport = () => {
+  const handleExportCSV = () => {
     if (!generatedReport || generatedReport.data.length === 0) {
       toast.error('No data to export');
       return;
@@ -188,6 +188,20 @@ export function ReportBuilderDialog({ open, onOpenChange }: ReportBuilderDialogP
       `${generatedReport.reportType}-${new Date().toISOString().split('T')[0]}.csv`
     );
     toast.success('Report exported to CSV');
+  };
+
+  const handleExportPDF = () => {
+    if (!generatedReport || generatedReport.data.length === 0) {
+      toast.error('No data to export');
+      return;
+    }
+
+    const reportName = reportTypes.find(r => r.id === generatedReport.reportType)?.name || generatedReport.reportType;
+    exportToPDF(
+      generatedReport.data,
+      reportName
+    );
+    toast.success('PDF print dialog opened');
   };
 
   const selectedReportType = reportTypes.find(r => r.id === selectedReport);
@@ -302,8 +316,11 @@ export function ReportBuilderDialog({ open, onOpenChange }: ReportBuilderDialogP
                   </p>
                 </div>
                 <div className="flex gap-2">
-                  <Button variant="outline" size="sm" onClick={handleExport}>
+                  <Button variant="outline" size="sm" onClick={handleExportCSV}>
                     <Download className="w-4 h-4 mr-1.5" /> Export CSV
+                  </Button>
+                  <Button variant="outline" size="sm" onClick={handleExportPDF}>
+                    <FileDown className="w-4 h-4 mr-1.5" /> Export PDF
                   </Button>
                   <Button variant="outline" size="sm" onClick={() => setGeneratedReport(null)}>
                     New Report

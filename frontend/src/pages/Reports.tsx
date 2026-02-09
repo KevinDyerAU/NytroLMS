@@ -14,13 +14,13 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import {
   BarChart3, FileText, Users, GraduationCap,
-  Download, ArrowRight, ClipboardCheck, Building2,
+  Download, FileDown, ArrowRight, ClipboardCheck, Building2,
   Search, Loader2, AlertCircle, Eye,
 } from 'lucide-react';
 import { toast } from 'sonner';
-import { exportToCSV } from '@/lib/utils';
+import { exportToCSV, exportToPDF } from '@/lib/utils';
 import { useSupabaseQuery } from '@/hooks/useSupabaseQuery';
-import { fetchAdminReports, fetchCourseProgressSummary, CourseProgressSummary } from '@/lib/api';
+import { fetchAdminReports, fetchAdminReportsForExport, fetchCourseProgressSummary, CourseProgressSummary } from '@/lib/api';
 import type { DbAdminReport } from '@/lib/types';
 
 const reportCategories = [
@@ -82,7 +82,28 @@ export default function Reports() {
   const [page, setPage] = useState(0);
   const [selectedReportId, setSelectedReportId] = useState<number | null>(null);
   const [reportBuilderOpen, setReportBuilderOpen] = useState(false);
+  const [exporting, setExporting] = useState(false);
   const limit = 25;
+
+  const handleExport = async (format: 'csv' | 'pdf') => {
+    setExporting(true);
+    try {
+      const data = await fetchAdminReportsForExport({ status: statusFilter });
+      if (!data || data.length === 0) { toast.error('No data to export'); return; }
+      const filename = `admin-reports-${new Date().toISOString().split('T')[0]}`;
+      if (format === 'csv') {
+        exportToCSV(data, `${filename}.csv`);
+        toast.success(`Exported ${data.length} records to CSV`);
+      } else {
+        exportToPDF(data, 'Admin Reports');
+        toast.success('PDF print dialog opened');
+      }
+    } catch (err) {
+      toast.error('Export failed');
+    } finally {
+      setExporting(false);
+    }
+  };
 
   const { data: reportData, loading: reportsLoading, error: reportsError, refetch: refetchReports } = useSupabaseQuery(
     () => fetchAdminReports({ search, status: statusFilter, limit, offset: page * limit }),
@@ -166,34 +187,14 @@ export default function Reports() {
                   </SelectContent>
                 </Select>
               </div>
-              <Button variant="outline" size="sm" className="border-[#e2e8f0] text-[#64748b]" onClick={() => {
-                if (reports.length === 0) {
-                  toast.error('No data to export');
-                  return;
-                }
-                exportToCSV(
-                  reports.map(r => ({
-                    id: r.id,
-                    student_id: r.student_id,
-                    course_id: r.course_id,
-                    student_status: r.student_status,
-                    created_at: r.created_at,
-                    updated_at: r.updated_at,
-                  })),
-                  `admin-reports-${new Date().toISOString().split('T')[0]}.csv`,
-                  [
-                    { key: 'id', label: 'ID' },
-                    { key: 'student_id', label: 'Student ID' },
-                    { key: 'course_id', label: 'Course ID' },
-                    { key: 'student_status', label: 'Status' },
-                    { key: 'created_at', label: 'Created At' },
-                    { key: 'updated_at', label: 'Updated At' },
-                  ]
-                );
-                toast.success('Reports exported to CSV');
-              }}>
-                <Download className="w-4 h-4 mr-1.5" /> Export
-              </Button>
+              <div className="flex gap-2">
+                <Button variant="outline" size="sm" className="border-[#e2e8f0] text-[#64748b]" disabled={exporting} onClick={() => handleExport('csv')}>
+                  {exporting ? <Loader2 className="w-4 h-4 mr-1.5 animate-spin" /> : <Download className="w-4 h-4 mr-1.5" />} Export CSV
+                </Button>
+                <Button variant="outline" size="sm" className="border-[#e2e8f0] text-[#64748b]" disabled={exporting} onClick={() => handleExport('pdf')}>
+                  {exporting ? <Loader2 className="w-4 h-4 mr-1.5 animate-spin" /> : <FileDown className="w-4 h-4 mr-1.5" />} Export PDF
+                </Button>
+              </div>
             </div>
 
             {reportsError && (

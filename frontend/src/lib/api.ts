@@ -3394,6 +3394,108 @@ export async function fetchAdminReports(params?: {
   }
 }
 
+/** Fetch all admin reports with parsed fields for rich CSV/PDF export.
+ *  Matches Laravel AdminReportDataTable::fastExcelCallback() columns. */
+export async function fetchAdminReportsForExport(params?: {
+  status?: string;
+}): Promise<Record<string, unknown>[]> {
+  assertConfigured();
+  try {
+    let query = supabase
+      .from('admin_reports')
+      .select('*');
+    if (params?.status && params.status !== 'all') {
+      query = query.eq('student_status', params.status);
+    }
+    query = query.order('updated_at', { ascending: false });
+
+    const { data, error } = await query;
+    if (error) throw error;
+
+    return (data ?? []).map(r => {
+      const student = safeJson(r.student_details);
+      const course = safeJson(r.course_details);
+      const trainer = safeJson(r.trainer_details);
+      const leader = safeJson(r.leader_details);
+      const company = safeJson(r.company_details);
+      const progress = safeJson(r.student_course_progress);
+
+      // Derive student status (matching Laravel logic)
+      let studentStatus = r.student_status ?? '';
+      if (studentStatus.toLowerCase() === 'enrolled') studentStatus = 'REGISTERED';
+      else if (studentStatus.toLowerCase() === 'onboarded') studentStatus = 'ACTIVE';
+
+      // Derive expected progress
+      let expectedProgress = '0';
+      if (r.student_course_start_date && r.student_course_end_date) {
+        const start = new Date(r.student_course_start_date).getTime();
+        const end = new Date(r.student_course_end_date).getTime();
+        const now = Date.now();
+        if (now <= start) expectedProgress = '0';
+        else if (now >= end) expectedProgress = '100';
+        else {
+          const total = end - start;
+          const elapsed = now - start;
+          expectedProgress = total > 0 ? Math.min(100, (elapsed / total) * 100).toFixed(1) : '0';
+        }
+      }
+
+      return {
+        'ID': r.id,
+        'Student ID': r.student_id,
+        'Student': student?.name ?? '',
+        'Student Email': student?.email ?? '',
+        'Student Phone': student?.phone ?? '',
+        'Purchase Order': student?.purchase_order ?? '',
+        'Student Status': titleCase(studentStatus),
+        'Last Active': fmtDate(r.student_last_active),
+        'Trainer': trainer?.name ?? '',
+        'Leader': leader?.name ?? '',
+        'Leader Email': leader?.email ?? '',
+        'Company': company?.name ?? '',
+        'Company Email': company?.email ?? '',
+        'Company Address': company?.address ?? '',
+        'Company Phone': company?.number ?? '',
+        'Course': course?.title ?? '',
+        'Course Status': titleCase(r.course_status ?? ''),
+        'Course Completed': fmtDate(r.course_completed_at),
+        'Course Expiry': fmtDate(r.course_expiry),
+        'Start Date': r.student_course_start_date ?? '',
+        'End Date': r.student_course_end_date ?? '',
+        'Semester 1 Only': r.allowed_to_next_course ? 'No' : 'Yes',
+        'Is Main Course': r.is_main_course === 1 ? 'Yes' : 'No',
+        'Current Progress': `${progress?.current_course_progress ?? 0}%`,
+        'Expected Progress': `${expectedProgress}%`,
+        'Total Assignments': progress?.total_assignments ?? 0,
+        'Satisfactory': progress?.total_assignments_satisfactory ?? 0,
+        'Not Satisfactory': progress?.total_assignments_not_satisfactory ?? 0,
+        'Pending': progress?.total_assignments_remaining ?? 0,
+        'Updated': fmtDate(r.updated_at),
+        'Created': fmtDate(r.created_at),
+      };
+    });
+  } catch (e) {
+    handleError(e, 'Failed to fetch reports for export');
+  }
+}
+
+function safeJson(str: string | null | undefined): Record<string, any> | null {
+  if (!str) return null;
+  if (typeof str === 'object') return str as Record<string, any>;
+  try { return JSON.parse(str); } catch { return null; }
+}
+
+function titleCase(s: string): string {
+  return s.replace(/_/g, ' ').replace(/\w\S*/g, t => t.charAt(0).toUpperCase() + t.substring(1).toLowerCase());
+}
+
+function fmtDate(d: string | null | undefined): string {
+  if (!d) return '';
+  try {
+    return new Date(d).toLocaleDateString('en-AU', { day: 'numeric', month: 'short', year: 'numeric' });
+  } catch { return d; }
+}
+
 // ─── User Management ─────────────────────────────────────────────────────────
 
 export async function fetchRoles(): Promise<{ id: number; name: string }[]> {
