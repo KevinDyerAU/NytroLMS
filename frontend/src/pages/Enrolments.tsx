@@ -5,6 +5,7 @@
 import React, { useState, useMemo } from 'react';
 import { DashboardLayout } from '../components/DashboardLayout';
 import { EnrolmentDetailDialog } from '../components/EnrolmentDetailDialog';
+import { NewEnrolmentDialog } from '../components/NewEnrolmentDialog';
 import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -29,6 +30,7 @@ export default function Enrolments() {
   const [statusFilter, setStatusFilter] = useState('all');
   const [page, setPage] = useState(0);
   const [selectedEnrolmentId, setSelectedEnrolmentId] = useState<number | null>(null);
+  const [addDialogOpen, setAddDialogOpen] = useState(false);
   const limit = 25;
 
   const { data, loading, error, refetch } = useSupabaseQuery(
@@ -72,7 +74,7 @@ export default function Enrolments() {
             <Button variant="outline" size="sm" className="border-[#e2e8f0] text-[#64748b]" onClick={() => toast('Export coming soon')}>
               <Download className="w-4 h-4 mr-1.5" /> Export
             </Button>
-            <Button size="sm" className="bg-[#3b82f6] hover:bg-[#2563eb] text-white" onClick={() => toast('New enrolment coming soon')}>
+            <Button size="sm" className="bg-[#3b82f6] hover:bg-[#2563eb] text-white" onClick={() => setAddDialogOpen(true)}>
               <Plus className="w-4 h-4 mr-1.5" /> New Enrolment
             </Button>
           </div>
@@ -172,6 +174,12 @@ export default function Enrolments() {
           enrolmentId={selectedEnrolmentId}
         />
       )}
+
+      <NewEnrolmentDialog
+        open={addDialogOpen}
+        onOpenChange={setAddDialogOpen}
+        onSaved={() => { refetch(); }}
+      />
     </DashboardLayout>
   );
 }

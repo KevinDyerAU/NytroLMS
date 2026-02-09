@@ -5,6 +5,8 @@
 import React, { useState } from 'react';
 import { DashboardLayout } from '../components/DashboardLayout';
 import { CompanyDetail } from '../components/CompanyDetail';
+import { AddCompanyDialog } from '../components/AddCompanyDialog';
+import { EditCompanyDialog } from '../components/EditCompanyDialog';
 import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -17,6 +19,8 @@ import { fetchCompanies, CompanyWithCounts } from '@/lib/api';
 export default function Companies() {
   const [search, setSearch] = useState('');
   const [selectedCompanyId, setSelectedCompanyId] = useState<number | null>(null);
+  const [addDialogOpen, setAddDialogOpen] = useState(false);
+  const [editCompanyId, setEditCompanyId] = useState<number | null>(null);
 
   const { data, loading, error, refetch } = useSupabaseQuery(
     () => fetchCompanies({ search, limit: 50 }),
@@ -31,8 +35,16 @@ export default function Companies() {
         <CompanyDetail
           companyId={selectedCompanyId}
           onBack={() => setSelectedCompanyId(null)}
-          onEdit={(id) => toast(`Edit company #${id} coming soon`)}
+          onEdit={(id) => setEditCompanyId(id)}
         />
+        {editCompanyId !== null && (
+          <EditCompanyDialog
+            open={true}
+            onOpenChange={(open) => { if (!open) setEditCompanyId(null); }}
+            companyId={editCompanyId}
+            onSaved={() => { refetch(); setEditCompanyId(null); setSelectedCompanyId(null); }}
+          />
+        )}
       </DashboardLayout>
     );
   }
@@ -46,7 +58,7 @@ export default function Companies() {
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-[#94a3b8]" />
             <Input placeholder="Search companies..." value={search} onChange={(e) => setSearch(e.target.value)} className="pl-9 border-[#e2e8f0] h-9" />
           </div>
-          <Button size="sm" className="bg-[#3b82f6] hover:bg-[#2563eb] text-white" onClick={() => toast('Add company coming soon')}>
+          <Button size="sm" className="bg-[#3b82f6] hover:bg-[#2563eb] text-white" onClick={() => setAddDialogOpen(true)}>
             <Plus className="w-4 h-4 mr-1.5" /> Add Company
           </Button>
         </div>
@@ -129,6 +141,20 @@ export default function Companies() {
           </>
         )}
       </div>
+      <AddCompanyDialog
+        open={addDialogOpen}
+        onOpenChange={setAddDialogOpen}
+        onSaved={() => { refetch(); }}
+      />
+
+      {editCompanyId !== null && (
+        <EditCompanyDialog
+          open={true}
+          onOpenChange={(open) => { if (!open) setEditCompanyId(null); }}
+          companyId={editCompanyId}
+          onSaved={() => { refetch(); setEditCompanyId(null); }}
+        />
+      )}
     </DashboardLayout>
   );
 }

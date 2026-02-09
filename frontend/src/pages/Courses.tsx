@@ -6,12 +6,13 @@ import { useState } from 'react';
 import { DashboardLayout } from '../components/DashboardLayout';
 import { StatusBadge } from '../components/StatusBadge';
 import { CourseDetail } from '../components/CourseDetail';
+import { AddCourseDialog } from '../components/AddCourseDialog';
+import { EditCourseDialog } from '../components/EditCourseDialog';
 import { useSupabaseQuery } from '@/hooks/useSupabaseQuery';
 import { fetchCourses, type CourseWithDetails } from '@/lib/api';
 import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { Progress } from '@/components/ui/progress';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import {
   Search, Plus, BookOpen, Users, Grid3X3, List,
@@ -25,6 +26,8 @@ export default function Courses() {
   const [statusFilter, setStatusFilter] = useState('all');
   const [viewMode, setViewMode] = useState<'grid' | 'list'>('grid');
   const [selectedCourseId, setSelectedCourseId] = useState<number | null>(null);
+  const [addDialogOpen, setAddDialogOpen] = useState(false);
+  const [editCourseId, setEditCourseId] = useState<number | null>(null);
 
   const { data, loading, error, refetch } = useSupabaseQuery(
     () => fetchCourses({ search, status: statusFilter, limit: 100 }),
@@ -39,8 +42,16 @@ export default function Courses() {
         <CourseDetail
           courseId={selectedCourseId}
           onBack={() => setSelectedCourseId(null)}
-          onEdit={(id) => toast(`Edit course #${id} coming soon`)}
+          onEdit={(id) => setEditCourseId(id)}
         />
+        {editCourseId !== null && (
+          <EditCourseDialog
+            open={true}
+            onOpenChange={(open) => { if (!open) setEditCourseId(null); }}
+            courseId={editCourseId}
+            onSaved={() => { refetch(); setEditCourseId(null); setSelectedCourseId(null); }}
+          />
+        )}
       </DashboardLayout>
     );
   }
@@ -87,7 +98,7 @@ export default function Courses() {
                 <List className="w-4 h-4" />
               </button>
             </div>
-            <Button size="sm" className="bg-[#3b82f6] hover:bg-[#2563eb] text-white" onClick={() => toast('Add course coming soon')}>
+            <Button size="sm" className="bg-[#3b82f6] hover:bg-[#2563eb] text-white" onClick={() => setAddDialogOpen(true)}>
               <Plus className="w-4 h-4 mr-1.5" /> Add Course
             </Button>
           </div>
@@ -206,6 +217,20 @@ export default function Courses() {
           </Card>
         )}
       </div>
+      <AddCourseDialog
+        open={addDialogOpen}
+        onOpenChange={setAddDialogOpen}
+        onSaved={() => { refetch(); }}
+      />
+
+      {editCourseId !== null && (
+        <EditCourseDialog
+          open={true}
+          onOpenChange={(open) => { if (!open) setEditCourseId(null); }}
+          courseId={editCourseId}
+          onSaved={() => { refetch(); setEditCourseId(null); if (selectedCourseId === editCourseId) setSelectedCourseId(null); }}
+        />
+      )}
     </DashboardLayout>
   );
 }

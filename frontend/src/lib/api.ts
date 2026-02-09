@@ -1293,6 +1293,47 @@ export async function fetchEnrolments(params?: {
   }
 }
 
+export async function createEnrolment(data: {
+  user_id: number;
+  course_id: number;
+  course_start_at?: string;
+  course_ends_at?: string;
+}): Promise<{ id: number }> {
+  assertConfigured();
+  try {
+    const now = new Date().toISOString();
+    const { data: newEnrolment, error } = await supabase
+      .from('student_course_enrolments')
+      .insert({
+        user_id: data.user_id,
+        course_id: data.course_id,
+        status: 'ACTIVE',
+        is_main_course: 1,
+        is_locked: 0,
+        is_semester_2: 0,
+        allowed_to_next_course: 0,
+        course_start_at: data.course_start_at || now,
+        course_ends_at: data.course_ends_at || null,
+        version: 1,
+        deferred: 0,
+        cert_issued: 0,
+        is_chargeable: 1,
+        registered_on_create: 1,
+        show_on_widget: 1,
+        show_registration_date: 1,
+        registration_date: now,
+        created_at: now,
+        updated_at: now,
+      })
+      .select('id')
+      .single();
+    if (error) throw error;
+    return { id: newEnrolment.id };
+  } catch (e) {
+    handleError(e, 'Failed to create enrolment');
+  }
+}
+
 // ─── Companies ───────────────────────────────────────────────────────────────
 
 export interface CompanyWithCounts extends DbCompany {
@@ -1460,6 +1501,79 @@ export async function fetchCompanyFullDetail(companyId: number): Promise<Company
     return { ...company, poc_user_name, bm_user_name, leaders, students, signup_links: signupLinks };
   } catch (e) {
     handleError(e, 'Failed to fetch company detail');
+  }
+}
+
+export async function fetchCompanyById(companyId: number): Promise<DbCompany | null> {
+  assertConfigured();
+  try {
+    const { data, error } = await supabase
+      .from('companies')
+      .select('*')
+      .eq('id', companyId)
+      .single();
+    if (error) throw error;
+    return data;
+  } catch (e) {
+    handleError(e, 'Failed to fetch company');
+  }
+}
+
+export async function createCompany(data: {
+  name: string;
+  email: string;
+  address?: string;
+  number?: string;
+  poc_user_id?: number | null;
+  bm_user_id?: number | null;
+}): Promise<{ id: number }> {
+  assertConfigured();
+  try {
+    const { data: newCompany, error } = await supabase
+      .from('companies')
+      .insert({
+        name: data.name,
+        email: data.email,
+        address: data.address || null,
+        number: data.number || '',
+        poc_user_id: data.poc_user_id || null,
+        bm_user_id: data.bm_user_id || null,
+        created_by: '',
+        modified_by: '[]',
+      })
+      .select('id')
+      .single();
+    if (error) throw error;
+    return { id: newCompany.id };
+  } catch (e) {
+    handleError(e, 'Failed to create company');
+  }
+}
+
+export async function updateCompany(companyId: number, data: {
+  name?: string;
+  email?: string;
+  address?: string | null;
+  number?: string;
+  poc_user_id?: number | null;
+  bm_user_id?: number | null;
+}): Promise<void> {
+  assertConfigured();
+  try {
+    const fields: Record<string, unknown> = {};
+    if (data.name !== undefined) fields.name = data.name;
+    if (data.email !== undefined) fields.email = data.email;
+    if (data.address !== undefined) fields.address = data.address;
+    if (data.number !== undefined) fields.number = data.number;
+    if (data.poc_user_id !== undefined) fields.poc_user_id = data.poc_user_id;
+    if (data.bm_user_id !== undefined) fields.bm_user_id = data.bm_user_id;
+
+    if (Object.keys(fields).length > 0) {
+      const { error } = await supabase.from('companies').update(fields).eq('id', companyId);
+      if (error) throw error;
+    }
+  } catch (e) {
+    handleError(e, 'Failed to update company');
   }
 }
 
