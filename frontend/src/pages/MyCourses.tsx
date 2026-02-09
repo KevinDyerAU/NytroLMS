@@ -2,7 +2,7 @@
  * My Courses Page — Student-facing LMS view
  * Shows enrolled courses with progress, expandable lessons/topics/quizzes
  */
-import { useState } from 'react';
+import { useState, useCallback } from 'react';
 import { DashboardLayout } from '../components/DashboardLayout';
 import { Card } from '@/components/ui/card';
 import { Progress } from '@/components/ui/progress';
@@ -12,14 +12,17 @@ import { useSupabaseQuery } from '@/hooks/useSupabaseQuery';
 import {
   fetchMyEnrolledCourses,
   fetchCourseLessonsForStudent,
+  fetchLastQuizAttempt,
   type StudentEnrolledCourse,
   type StudentLessonView,
 } from '@/lib/api';
+import { QuizAttemptView } from '@/components/QuizAttemptView';
+import { QuizResultView } from '@/components/QuizResultView';
 import { StatusBadge } from '@/components/StatusBadge';
 import {
   BookOpen, ChevronDown, ChevronRight, GraduationCap,
   Loader2, CheckCircle2, Clock, FileText, ClipboardCheck,
-  ArrowLeft, AlertCircle,
+  ArrowLeft, AlertCircle, Play, Eye,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
@@ -38,11 +41,60 @@ function CourseDetailView({ course, userId, onBack }: {
   userId: number;
   onBack: () => void;
 }) {
-  const { data: lessons, loading } = useSupabaseQuery(
+  const { data: lessons, loading, refetch } = useSupabaseQuery(
     () => fetchCourseLessonsForStudent(course.course_id, userId),
     [course.course_id, userId]
   );
   const [expandedLessons, setExpandedLessons] = useState<Set<number>>(new Set());
+  const [activeQuiz, setActiveQuiz] = useState<{ id: number; title: string; mode: 'attempt' | 'result'; attemptId?: number } | null>(null);
+
+  const handleQuizClick = useCallback(async (quiz: { id: number; title: string; status: string | null }) => {
+    // If quiz has a completed/evaluated attempt, show result; otherwise start attempt
+    if (quiz.status && ['SATISFACTORY', 'SUBMITTED', 'FAIL', 'RETURNED'].includes(quiz.status)) {
+      // Fetch the last attempt to get its ID
+      const lastAttempt = await fetchLastQuizAttempt(quiz.id, userId);
+      if (lastAttempt) {
+        // If RETURNED or FAIL, allow re-attempt
+        if (['RETURNED', 'FAIL'].includes(lastAttempt.status)) {
+          setActiveQuiz({ id: quiz.id, title: quiz.title, mode: 'attempt' });
+        } else {
+          setActiveQuiz({ id: quiz.id, title: quiz.title, mode: 'result', attemptId: lastAttempt.id });
+        }
+        return;
+      }
+    }
+    // Start new attempt
+    setActiveQuiz({ id: quiz.id, title: quiz.title, mode: 'attempt' });
+  }, [userId]);
+
+  // Show quiz attempt view
+  if (activeQuiz?.mode === 'attempt') {
+    return (
+      <QuizAttemptView
+        quizId={activeQuiz.id}
+        userId={userId}
+        courseId={course.course_id}
+        quizTitle={activeQuiz.title}
+        onBack={() => { setActiveQuiz(null); refetch(); }}
+        onComplete={(result) => {
+          setActiveQuiz({ id: activeQuiz.id, title: activeQuiz.title, mode: 'result', attemptId: result.attemptId });
+          refetch();
+        }}
+      />
+    );
+  }
+
+  // Show quiz result view
+  if (activeQuiz?.mode === 'result' && activeQuiz.attemptId) {
+    return (
+      <QuizResultView
+        quizId={activeQuiz.id}
+        attemptId={activeQuiz.attemptId}
+        userId={userId}
+        onBack={() => { setActiveQuiz(null); refetch(); }}
+      />
+    );
+  }
 
   const toggleLesson = (id: number) => {
     setExpandedLessons(prev => {
@@ -167,11 +219,15 @@ function CourseDetailView({ course, userId, onBack }: {
                         {topic.quizzes.length > 0 && (
                           <div className="ml-5 space-y-1.5">
                             {topic.quizzes.map((quiz) => (
-                              <div key={quiz.id} className="flex items-center gap-2 text-xs">
+                              <button
+                                key={quiz.id}
+                                onClick={() => handleQuizClick(quiz)}
+                                className="w-full flex items-center gap-2 text-xs hover:bg-[#f1f5f9] rounded-md px-2 py-1.5 -mx-2 transition-colors group"
+                              >
                                 <QuizStatusIcon status={quiz.status} />
                                 <ClipboardCheck className="w-3 h-3 text-[#94a3b8]" />
                                 <span className={cn(
-                                  "flex-1",
+                                  "flex-1 text-left",
                                   quiz.status === 'SATISFACTORY' ? 'text-emerald-600' : 'text-[#64748b]'
                                 )}>
                                   {quiz.title}
@@ -193,7 +249,14 @@ function CourseDetailView({ course, userId, onBack }: {
                                     Attempt {quiz.attempts}
                                   </span>
                                 )}
-                              </div>
+                                {/* Action icon */}
+                                <span className="opacity-0 group-hover:opacity-100 transition-opacity">
+                                  {!quiz.status || ['RETURNED', 'FAIL'].includes(quiz.status)
+                                    ? <Play className="w-3 h-3 text-[#3b82f6]" />
+                                    : <Eye className="w-3 h-3 text-[#64748b]" />
+                                  }
+                                </span>
+                              </button>
                             ))}
                           </div>
                         )}
