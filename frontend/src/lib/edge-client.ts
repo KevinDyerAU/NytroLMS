@@ -37,10 +37,18 @@ export async function callEdgeFunction<T = unknown>(
 ): Promise<T> {
   const { method = 'GET', path = '', body, params } = options;
 
-  // Get the current session token
-  const { data: { session } } = await supabase.auth.getSession();
-  if (!session?.access_token) {
-    throw new EdgeFunctionError('Not authenticated', 401);
+  // Get a fresh session token (refreshes if expired)
+  let accessToken: string;
+  const { data: { session }, error: sessionError } = await supabase.auth.getSession();
+  if (sessionError || !session?.access_token) {
+    // Try refreshing explicitly
+    const { data: refreshData, error: refreshError } = await supabase.auth.refreshSession();
+    if (refreshError || !refreshData.session?.access_token) {
+      throw new EdgeFunctionError('Not authenticated — please log in again', 401);
+    }
+    accessToken = refreshData.session.access_token;
+  } else {
+    accessToken = session.access_token;
   }
 
   // Build URL
@@ -55,7 +63,7 @@ export async function callEdgeFunction<T = unknown>(
 
   // Make request
   const headers: Record<string, string> = {
-    'Authorization': `Bearer ${session.access_token}`,
+    'Authorization': `Bearer ${accessToken}`,
     'Content-Type': 'application/json',
     'apikey': import.meta.env.VITE_SUPABASE_ANON_KEY || '',
   };

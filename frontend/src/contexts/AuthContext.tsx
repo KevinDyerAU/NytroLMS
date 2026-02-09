@@ -37,68 +37,46 @@ const AuthContext = createContext<AuthContextType | undefined>(undefined);
  */
 async function fetchLmsProfile(email: string): Promise<User | null> {
   try {
-    // Get the user record from public.users
-    const { data: lmsUser, error: userError } = await supabase
-      .from('users')
-      .select('id, first_name, last_name, username, email, is_active, userable_type')
-      .eq('email', email)
-      .maybeSingle();
+    // Timeout to prevent hanging forever
+    const timeout = new Promise<never>((_, reject) =>
+      setTimeout(() => reject(new Error('Profile fetch timed out')), 8000)
+    );
 
-    if (userError || !lmsUser) {
-      console.error('LMS user lookup failed:', userError?.message);
-      return null;
-    }
+    const fetchProfile = async () => {
+      // Parallel fetch: user record + auth context (role + permissions) in 2 calls
+      const [userResult, authCtxResult] = await Promise.all([
+        supabase
+          .from('users')
+          .select('id, first_name, last_name, username, email, is_active, userable_type')
+          .eq('email', email)
+          .maybeSingle(),
+        supabase.rpc('get_user_auth_context', { p_email: email }),
+      ]);
 
-    // Get the user's role from model_has_roles
-    const { data: roleData, error: roleError } = await supabase
-      .from('model_has_roles')
-      .select('role_id')
-      .eq('model_id', lmsUser.id)
-      .eq('model_type', 'App\\Models\\User')
-      .maybeSingle();
-
-    let role: UserRole = 'Student'; // default
-    let roleId: number | null = null;
-    if (!roleError && roleData?.role_id) {
-      roleId = roleData.role_id;
-      // Get the role name separately
-      const { data: roleInfo } = await supabase
-        .from('roles')
-        .select('name')
-        .eq('id', roleData.role_id)
-        .single();
-      if (roleInfo?.name) {
-        role = roleInfo.name as UserRole;
+      if (userResult.error || !userResult.data) {
+        console.error('LMS user lookup failed:', userResult.error?.message);
+        return null;
       }
-    }
 
-    // Get permissions for this role
-    const permissions: string[] = [];
-    if (roleId) {
-      const { data: permData } = await supabase
-        .from('role_has_permissions')
-        .select('permission_id')
-        .eq('role_id', roleId);
-
-      if (permData) {
-        for (const p of permData) {
-          const { data: permInfo } = await supabase
-            .from('permissions')
-            .select('name')
-            .eq('id', p.permission_id)
-            .single();
-          if (permInfo?.name) permissions.push(permInfo.name);
-        }
+      if (authCtxResult.error) {
+        console.error('Auth context RPC failed:', authCtxResult.error.message);
       }
-    }
 
-    return {
-      id: lmsUser.id,
-      name: `${lmsUser.first_name} ${lmsUser.last_name}`.trim(),
-      email: lmsUser.email,
-      role,
-      permissions,
+      const lmsUser = userResult.data;
+      const ctx = authCtxResult.data;
+      const role = (ctx?.role ?? 'Student') as UserRole;
+      const permissions: string[] = ctx?.permissions ?? [];
+
+      return {
+        id: lmsUser.id,
+        name: `${lmsUser.first_name} ${lmsUser.last_name}`.trim(),
+        email: lmsUser.email,
+        role,
+        permissions,
+      };
     };
+
+    return await Promise.race([fetchProfile(), timeout]);
   } catch (err) {
     console.error('Error fetching LMS profile:', err);
     return null;
@@ -133,10 +111,27 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       }
     }, 5000);
 
-    // Check if there's even a stored session before calling getSession
+    // Check if there's a stored session and if its token is still valid
     const storedSession = window.localStorage.getItem('nytrolms_auth');
-    if (!storedSession) {
-      // No stored session - skip the network call entirely
+    let tokenExpired = false;
+    if (storedSession) {
+      try {
+        const parsed = JSON.parse(storedSession);
+        const expiresAt = parsed?.expires_at;
+        if (expiresAt && expiresAt < Math.floor(Date.now() / 1000)) {
+          tokenExpired = true;
+        }
+      } catch {
+        tokenExpired = true;
+      }
+    }
+
+    if (!storedSession || tokenExpired) {
+      // No session or expired token - clear and skip network call
+      if (tokenExpired) {
+        console.warn('Stored session expired, clearing');
+        window.localStorage.removeItem('nytrolms_auth');
+      }
       clearTimeout(hardTimeout);
       setIsLoading(false);
     } else {
@@ -182,14 +177,12 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     const { data: { subscription } } = supabase.auth.onAuthStateChange(
       async (event, newSession) => {
         setSession(newSession);
-        if (event === 'SIGNED_IN' && newSession?.user?.email) {
-          const profile = await fetchLmsProfile(newSession.user.email);
-          if (profile) {
-            profile.supabaseId = newSession.user.id;
-            setUser(profile);
-          }
-        } else if (event === 'SIGNED_OUT') {
+        // Profile is already fetched in login() — only handle sign-out and
+        // token refresh events here to avoid duplicate fetches that race.
+        if (event === 'SIGNED_OUT') {
           setUser(null);
+        } else if (event === 'TOKEN_REFRESHED' && newSession) {
+          setSession(newSession);
         }
       }
     );
