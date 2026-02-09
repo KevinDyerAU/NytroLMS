@@ -59,11 +59,14 @@ export function Sidebar() {
 
   const NavContent = () => (
     <div className="flex flex-col h-full">
-      {/* Logo */}
-      <div className={cn(
-        "flex items-center border-b border-[#e2e8f0] transition-all duration-300",
-        collapsed ? "px-3 py-4 justify-center" : "px-5 py-4"
-      )}>
+      {/* Logo - clickable to dashboard */}
+      <Link
+        to="/dashboard"
+        className={cn(
+          "flex items-center border-b border-[#e2e8f0] transition-all duration-300 hover:bg-[#f8fafc]",
+          collapsed ? "px-3 py-4 justify-center" : "px-5 py-4"
+        )}
+      >
         <div className="flex items-center gap-3">
           <div className="w-9 h-9 rounded-lg bg-gradient-nytro flex items-center justify-center flex-shrink-0">
             <span className="text-white font-bold text-sm font-heading">N</span>
@@ -75,7 +78,7 @@ export function Sidebar() {
             </div>
           )}
         </div>
-      </div>
+      </Link>
 
       {/* Navigation */}
       <nav className="flex-1 py-3 px-2 space-y-0.5 overflow-y-auto">
