@@ -42,40 +42,53 @@ async function fetchLmsProfile(email: string): Promise<User | null> {
       .from('users')
       .select('id, first_name, last_name, username, email, is_active, userable_type')
       .eq('email', email)
-      .eq('is_active', 1)
-      .single();
+      .maybeSingle();
 
     if (userError || !lmsUser) {
       console.error('LMS user lookup failed:', userError?.message);
       return null;
     }
 
-    // Get the user's role from model_has_roles → roles
+    // Get the user's role from model_has_roles
     const { data: roleData, error: roleError } = await supabase
       .from('model_has_roles')
-      .select('role_id, roles(name)')
+      .select('role_id')
       .eq('model_id', lmsUser.id)
       .eq('model_type', 'App\\Models\\User')
-      .limit(1)
-      .single();
+      .maybeSingle();
 
     let role: UserRole = 'Student'; // default
-    if (!roleError && roleData?.roles) {
-      role = (roleData.roles as any).name as UserRole;
+    let roleId: number | null = null;
+    if (!roleError && roleData?.role_id) {
+      roleId = roleData.role_id;
+      // Get the role name separately
+      const { data: roleInfo } = await supabase
+        .from('roles')
+        .select('name')
+        .eq('id', roleData.role_id)
+        .single();
+      if (roleInfo?.name) {
+        role = roleInfo.name as UserRole;
+      }
     }
 
     // Get permissions for this role
     const permissions: string[] = [];
-    if (!roleError && roleData?.role_id) {
+    if (roleId) {
       const { data: permData } = await supabase
         .from('role_has_permissions')
-        .select('permission_id, permissions(name)')
-        .eq('role_id', roleData.role_id);
+        .select('permission_id')
+        .eq('role_id', roleId);
 
       if (permData) {
-        permData.forEach((p: any) => {
-          if (p.permissions?.name) permissions.push(p.permissions.name);
-        });
+        for (const p of permData) {
+          const { data: permInfo } = await supabase
+            .from('permissions')
+            .select('name')
+            .eq('id', p.permission_id)
+            .single();
+          if (permInfo?.name) permissions.push(permInfo.name);
+        }
       }
     }
 
@@ -105,22 +118,67 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       return;
     }
 
-    // Get initial session
-    supabase.auth.getSession().then(async ({ data: { session: initialSession } }) => {
-      setSession(initialSession);
-      if (initialSession?.user?.email) {
-        const profile = await fetchLmsProfile(initialSession.user.email);
-        if (profile) {
-          profile.supabaseId = initialSession.user.id;
-          setUser(profile);
-        }
+    let mounted = true;
+    const controller = new AbortController();
+    
+    // Hard timeout - never stay loading for more than 5 seconds
+    const hardTimeout = setTimeout(() => {
+      if (mounted) {
+        console.warn('Auth init hard timeout - clearing stale session');
+        controller.abort();
+        window.localStorage.removeItem('nytrolms_auth');
+        setSession(null);
+        setUser(null);
+        setIsLoading(false);
       }
-      setIsLoading(false);
-    }).catch(() => {
-      setIsLoading(false);
-    });
+    }, 5000);
 
-    // Subscribe to auth changes
+    // Check if there's even a stored session before calling getSession
+    const storedSession = window.localStorage.getItem('nytrolms_auth');
+    if (!storedSession) {
+      // No stored session - skip the network call entirely
+      clearTimeout(hardTimeout);
+      setIsLoading(false);
+    } else {
+      // Get initial session
+      supabase.auth.getSession().then(async ({ data: { session: initialSession }, error }) => {
+        if (!mounted) return;
+        clearTimeout(hardTimeout);
+        if (error) {
+          console.error('Session error:', error.message);
+          window.localStorage.removeItem('nytrolms_auth');
+          setIsLoading(false);
+          return;
+        }
+        setSession(initialSession);
+        if (initialSession?.user?.email) {
+          const profile = await fetchLmsProfile(initialSession.user.email);
+          if (mounted && profile) {
+            profile.supabaseId = initialSession.user.id;
+            setUser(profile);
+          }
+        }
+        if (mounted) setIsLoading(false);
+      }).catch((err) => {
+        if (!mounted) return;
+        clearTimeout(hardTimeout);
+        console.error('Auth init error:', err);
+        window.localStorage.removeItem('nytrolms_auth');
+        setIsLoading(false);
+      });
+    }
+
+    return () => { 
+      mounted = false; 
+      clearTimeout(hardTimeout);
+      controller.abort();
+    };
+  }, []);
+
+  // Subscribe to auth state changes
+  useEffect(() => {
+    if (!isSupabaseConfigured) return;
+    
     const { data: { subscription } } = supabase.auth.onAuthStateChange(
       async (event, newSession) => {
         setSession(newSession);

@@ -29,6 +29,11 @@ export function LoginDialog({ open, onOpenChange }: LoginDialogProps) {
   const [lastName, setLastName] = useState('');
   const [showPassword, setShowPassword] = useState(false);
   const [errorMessage, setErrorMessage] = useState('');
+  const [emailError, setEmailError] = useState('');
+  const [passwordError, setPasswordError] = useState('');
+  const [firstNameError, setFirstNameError] = useState('');
+  const [lastNameError, setLastNameError] = useState('');
+  const [shakeError, setShakeError] = useState(false);
 
   const resetForm = () => {
     setEmail('');
@@ -37,19 +42,45 @@ export function LoginDialog({ open, onOpenChange }: LoginDialogProps) {
     setLastName('');
     setShowPassword(false);
     setErrorMessage('');
+    setEmailError('');
+    setPasswordError('');
+    setFirstNameError('');
+    setLastNameError('');
+    setShakeError(false);
   };
 
   const switchView = (newView: DialogView) => {
     setErrorMessage('');
+    setEmailError('');
+    setPasswordError('');
+    setFirstNameError('');
+    setLastNameError('');
+    setShakeError(false);
     setView(newView);
+  };
+
+  const showError = (message: string) => {
+    setErrorMessage(message);
+    setShakeError(true);
+    setTimeout(() => setShakeError(false), 500);
   };
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
     setErrorMessage('');
+    setEmailError('');
+    setPasswordError('');
 
-    if (!email.trim()) { setErrorMessage('Email is required'); return; }
-    if (!password.trim()) { setErrorMessage('Password is required'); return; }
+    let hasError = false;
+    if (!email.trim()) { setEmailError('Email is required'); hasError = true; }
+    else if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) { setEmailError('Please enter a valid email'); hasError = true; }
+    
+    if (!password.trim()) { setPasswordError('Password is required'); hasError = true; }
+    
+    if (hasError) {
+      showError('Please fix the errors above');
+      return;
+    }
 
     const result = await login(email, password);
     if (result.success) {
@@ -58,7 +89,16 @@ export function LoginDialog({ open, onOpenChange }: LoginDialogProps) {
       onOpenChange(false);
       navigate('/dashboard');
     } else {
-      setErrorMessage(result.error || 'Login failed. Please try again.');
+      const errorMsg = result.error || 'Login failed. Please try again.';
+      showError(errorMsg);
+      // Clear password on auth failure
+      if (errorMsg.toLowerCase().includes('invalid')) {
+        setPassword('');
+        setPasswordError('Incorrect password');
+      }
+      if (errorMsg.toLowerCase().includes('not configured')) {
+        setEmailError('Account not found');
+      }
     }
   };
 
@@ -136,9 +176,9 @@ export function LoginDialog({ open, onOpenChange }: LoginDialogProps) {
         {/* Content */}
         <div className="px-6 pb-6 pt-4">
           {errorMessage && (
-            <div className="flex items-center gap-2 p-3 mb-4 rounded-lg bg-red-50 border border-red-200">
-              <AlertCircle className="h-4 w-4 text-red-500 flex-shrink-0" />
-              <p className="text-sm text-red-600">{errorMessage}</p>
+            <div className={`flex items-start gap-2 p-3 mb-4 rounded-lg bg-red-50 border border-red-200 ${shakeError ? 'animate-shake' : ''}`}>
+              <AlertCircle className="h-4 w-4 text-red-500 flex-shrink-0 mt-0.5" />
+              <p className="text-sm text-red-600 font-medium">{errorMessage}</p>
             </div>
           )}
 
@@ -152,10 +192,11 @@ export function LoginDialog({ open, onOpenChange }: LoginDialogProps) {
                   type="email"
                   placeholder="you@example.com"
                   value={email}
-                  onChange={(e) => { setEmail(e.target.value); setErrorMessage(''); }}
-                  className="mt-1.5 border-[#dbeafe] focus:border-[#3b82f6] h-10"
+                  onChange={(e) => { setEmail(e.target.value); setEmailError(''); setErrorMessage(''); }}
+                  className={`mt-1.5 h-10 ${emailError ? 'border-red-300 focus:border-red-500 focus:ring-red-200' : 'border-[#dbeafe] focus:border-[#3b82f6]'}`}
                   autoComplete="email"
                 />
+                {emailError && <p className="text-xs text-red-500 mt-1">{emailError}</p>}
               </div>
 
               <div>
@@ -166,8 +207,8 @@ export function LoginDialog({ open, onOpenChange }: LoginDialogProps) {
                     type={showPassword ? 'text' : 'password'}
                     placeholder="••••••••"
                     value={password}
-                    onChange={(e) => { setPassword(e.target.value); setErrorMessage(''); }}
-                    className="border-[#dbeafe] focus:border-[#3b82f6] pr-10 h-10"
+                    onChange={(e) => { setPassword(e.target.value); setPasswordError(''); setErrorMessage(''); }}
+                    className={`h-10 pr-10 ${passwordError ? 'border-red-300 focus:border-red-500 focus:ring-red-200' : 'border-[#dbeafe] focus:border-[#3b82f6]'}`}
                     autoComplete="current-password"
                   />
                   <button
@@ -178,6 +219,7 @@ export function LoginDialog({ open, onOpenChange }: LoginDialogProps) {
                     {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
                   </button>
                 </div>
+                {passwordError && <p className="text-xs text-red-500 mt-1">{passwordError}</p>}
               </div>
 
               <div className="flex items-center justify-end">
