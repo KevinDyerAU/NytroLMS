@@ -21,13 +21,13 @@ import {
   FileText,
   Menu,
   X,
-  User,
+  type LucideIcon,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
 interface NavItem {
   label: string;
-  icon: React.ElementType;
+  icon: LucideIcon;
   path: string;
   roles?: string[];
   children?: { label: string; path: string }[];
@@ -59,14 +59,11 @@ export function Sidebar() {
 
   const NavContent = () => (
     <div className="flex flex-col h-full">
-      {/* Logo - clickable to dashboard */}
-      <Link
-        to="/dashboard"
-        className={cn(
-          "flex items-center border-b border-[#e2e8f0] transition-all duration-300 hover:bg-[#f8fafc]",
-          collapsed ? "px-3 py-4 justify-center" : "px-5 py-4"
-        )}
-      >
+      {/* Logo */}
+      <div className={cn(
+        "flex items-center border-b border-[#e2e8f0] transition-all duration-300",
+        collapsed ? "px-3 py-4 justify-center" : "px-5 py-4"
+      )}>
         <div className="flex items-center gap-3">
           <div className="w-9 h-9 rounded-lg bg-gradient-nytro flex items-center justify-center flex-shrink-0">
             <span className="text-white font-bold text-sm font-heading">N</span>
@@ -78,7 +75,7 @@ export function Sidebar() {
             </div>
           )}
         </div>
-      </Link>
+      </div>
 
       {/* Navigation */}
       <nav className="flex-1 py-3 px-2 space-y-0.5 overflow-y-auto">
@@ -136,9 +133,7 @@ export function Sidebar() {
               </span>
             </div>
             <div className="min-w-0">
-              <Link to="/profile" className="text-sm font-medium text-[#1e293b] truncate hover:text-[#3b82f6] transition-colors">
-                {user.name}
-              </Link>
+              <p className="text-sm font-medium text-[#1e293b] truncate">{user.name}</p>
               <p className="text-xs text-[#94a3b8] truncate capitalize">{user.role}</p>
             </div>
           </div>
