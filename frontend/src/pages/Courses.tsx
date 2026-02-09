@@ -1,52 +1,62 @@
 /**
- * Courses Page - Course management with card grid
- * NytroAI design: clean cards with progress indicators
+ * Courses Page — Course management with real Supabase data.
+ * NytroAI design: clean cards with progress indicators, grid/list toggle.
  */
-import React, { useState } from 'react';
+import { useState } from 'react';
 import { DashboardLayout } from '../components/DashboardLayout';
+import { StatusBadge } from '../components/StatusBadge';
+import { useSupabaseQuery } from '@/hooks/useSupabaseQuery';
+import { fetchCourses, type CourseWithDetails } from '@/lib/api';
 import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { Badge } from '@/components/ui/badge';
 import { Progress } from '@/components/ui/progress';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import {
-  Search, Plus, BookOpen, Users, Clock, MoreHorizontal,
-  Grid3X3, List, ChevronRight,
+  Search, Plus, BookOpen, Users, Grid3X3, List,
+  ChevronRight, Loader2, AlertCircle, RefreshCw,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { toast } from 'sonner';
 
-const mockCourses = [
-  { id: 1, code: 'BSB30120', name: 'Certificate III in Business', students: 145, units: 13, completion: 72, status: 'active', duration: '12 months' },
-  { id: 2, code: 'BSB50420', name: 'Diploma of Leadership and Management', students: 98, units: 12, completion: 65, status: 'active', duration: '18 months' },
-  { id: 3, code: 'TAE40122', name: 'Certificate IV in Training and Assessment', students: 87, units: 10, completion: 81, status: 'active', duration: '12 months' },
-  { id: 4, code: 'CHC33021', name: 'Certificate III in Individual Support', students: 76, units: 14, completion: 58, status: 'active', duration: '12 months' },
-  { id: 5, code: 'BSB40120', name: 'Certificate IV in Business', students: 54, units: 10, completion: 45, status: 'active', duration: '12 months' },
-  { id: 6, code: 'BSB60420', name: 'Advanced Diploma of Leadership and Management', students: 32, units: 8, completion: 90, status: 'active', duration: '24 months' },
-];
-
 export default function Courses() {
   const [search, setSearch] = useState('');
+  const [statusFilter, setStatusFilter] = useState('all');
   const [viewMode, setViewMode] = useState<'grid' | 'list'>('grid');
 
-  const filtered = mockCourses.filter(c =>
-    c.name.toLowerCase().includes(search.toLowerCase()) ||
-    c.code.toLowerCase().includes(search.toLowerCase())
+  const { data, loading, error, refetch } = useSupabaseQuery(
+    () => fetchCourses({ search, status: statusFilter, limit: 100 }),
+    [search, statusFilter]
   );
+
+  const courses = data?.data ?? [];
 
   return (
     <DashboardLayout title="Courses" subtitle="Manage training courses and qualifications">
       <div className="space-y-4 animate-fade-in-up">
         {/* Toolbar */}
         <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
-          <div className="relative w-full sm:w-72">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-[#94a3b8]" />
-            <Input
-              placeholder="Search courses..."
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
-              className="pl-9 border-[#e2e8f0] h-9"
-            />
+          <div className="flex items-center gap-2 w-full sm:w-auto">
+            <div className="relative flex-1 sm:w-72">
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-[#94a3b8]" />
+              <Input
+                placeholder="Search courses..."
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+                className="pl-9 border-[#e2e8f0] h-9 bg-white/60 backdrop-blur-sm"
+              />
+            </div>
+            <Select value={statusFilter} onValueChange={setStatusFilter}>
+              <SelectTrigger className="w-[130px] h-9 border-slate-200 bg-white/60">
+                <SelectValue placeholder="Status" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">All Status</SelectItem>
+                <SelectItem value="PUBLISHED">Published</SelectItem>
+                <SelectItem value="DRAFT">Draft</SelectItem>
+                <SelectItem value="ARCHIVED">Archived</SelectItem>
+              </SelectContent>
+            </Select>
           </div>
           <div className="flex items-center gap-2">
             <div className="flex border border-[#e2e8f0] rounded-lg overflow-hidden">
@@ -69,75 +79,116 @@ export default function Courses() {
           </div>
         </div>
 
-        {/* Course Grid */}
-        {viewMode === 'grid' ? (
-          <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
-            {filtered.map((course) => (
-              <Card key={course.id} className="p-5 border-[#e2e8f0]/50 shadow-card hover:shadow-md transition-shadow group cursor-pointer" onClick={() => toast('Course details coming soon')}>
-                <div className="flex items-start justify-between mb-3">
-                  <div className="p-2 rounded-lg bg-[#eff6ff]">
-                    <BookOpen className="w-5 h-5 text-[#3b82f6]" />
-                  </div>
-                  <Badge variant="outline" className="bg-[#f0fdf4] text-[#22c55e] border-[#22c55e]/20 text-xs capitalize">
-                    {course.status}
-                  </Badge>
-                </div>
-                <h3 className="font-heading font-semibold text-[#1e293b] text-sm mb-1 group-hover:text-[#3b82f6] transition-colors">
-                  {course.name}
-                </h3>
-                <p className="text-xs text-[#94a3b8] mb-4">{course.code} &middot; {course.units} units &middot; {course.duration}</p>
-                <div className="space-y-2">
-                  <div className="flex items-center justify-between text-xs">
-                    <span className="text-[#64748b]">Completion</span>
-                    <span className="font-medium text-[#1e293b]">{course.completion}%</span>
-                  </div>
-                  <Progress value={course.completion} className="h-1.5" />
-                </div>
-                <div className="flex items-center justify-between mt-4 pt-3 border-t border-[#f1f5f9]">
-                  <div className="flex items-center gap-1 text-xs text-[#94a3b8]">
-                    <Users className="w-3.5 h-3.5" /> {course.students} students
-                  </div>
-                  <ChevronRight className="w-4 h-4 text-[#94a3b8] group-hover:text-[#3b82f6] transition-colors" />
-                </div>
-              </Card>
-            ))}
+        {/* Error state */}
+        {error && (
+          <Card className="p-8 text-center border-red-200 bg-red-50">
+            <AlertCircle className="mx-auto mb-3 h-8 w-8 text-red-400" />
+            <p className="text-sm font-medium text-red-700">Failed to load courses</p>
+            <p className="mt-1 text-xs text-red-500">{error}</p>
+            <Button variant="outline" size="sm" className="mt-4" onClick={refetch}>
+              <RefreshCw className="mr-2 h-3.5 w-3.5" /> Retry
+            </Button>
+          </Card>
+        )}
+
+        {/* Loading state */}
+        {loading && (
+          <div className="py-16 text-center">
+            <Loader2 className="mx-auto h-6 w-6 animate-spin text-blue-500" />
+            <p className="mt-2 text-sm text-muted-foreground">Loading courses...</p>
           </div>
-        ) : (
+        )}
+
+        {/* Course Grid */}
+        {!loading && !error && viewMode === 'grid' && (
+          <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
+            {courses.length === 0 ? (
+              <Card className="col-span-full p-12 text-center border-slate-200/50">
+                <BookOpen className="mx-auto mb-3 h-8 w-8 text-slate-300" />
+                <p className="text-sm text-muted-foreground">No courses found</p>
+              </Card>
+            ) : (
+              courses.map((course) => (
+                <Card
+                  key={course.id}
+                  className="p-5 border-[#e2e8f0]/50 shadow-card hover:shadow-md transition-shadow group cursor-pointer"
+                  onClick={() => toast(`Course: ${course.title}`)}
+                >
+                  <div className="flex items-start justify-between mb-3">
+                    <div className="p-2 rounded-lg bg-[#eff6ff]">
+                      <BookOpen className="w-5 h-5 text-[#3b82f6]" />
+                    </div>
+                    <StatusBadge status={course.status} />
+                  </div>
+                  <h3 className="font-heading font-semibold text-[#1e293b] text-sm mb-1 group-hover:text-[#3b82f6] transition-colors line-clamp-2">
+                    {course.title}
+                  </h3>
+                  <p className="text-xs text-[#94a3b8] mb-4">
+                    {course.slug ?? '—'} &middot; {course.lessons_count} lessons
+                    {course.visibility && <> &middot; {course.visibility}</>}
+                  </p>
+                  <div className="space-y-2">
+                    <div className="flex items-center justify-between text-xs">
+                      <span className="text-[#64748b]">Type</span>
+                      <span className="font-medium text-[#1e293b] capitalize">{course.course_type?.toLowerCase() ?? '—'}</span>
+                    </div>
+                  </div>
+                  <div className="flex items-center justify-between mt-4 pt-3 border-t border-[#f1f5f9]">
+                    <div className="flex items-center gap-1 text-xs text-[#94a3b8]">
+                      <Users className="w-3.5 h-3.5" /> {course.enrolments_count} enrolled
+                    </div>
+                    <ChevronRight className="w-4 h-4 text-[#94a3b8] group-hover:text-[#3b82f6] transition-colors" />
+                  </div>
+                </Card>
+              ))
+            )}
+          </div>
+        )}
+
+        {/* Course List */}
+        {!loading && !error && viewMode === 'list' && (
           <Card className="overflow-hidden border-[#e2e8f0]/50 shadow-card">
-            <table className="w-full">
-              <thead>
-                <tr className="border-b border-[#e2e8f0] bg-[#f8fafc]">
-                  <th className="text-left px-4 py-3 text-xs font-semibold text-[#64748b] uppercase tracking-wider">Course</th>
-                  <th className="text-left px-4 py-3 text-xs font-semibold text-[#64748b] uppercase tracking-wider hidden md:table-cell">Code</th>
-                  <th className="text-left px-4 py-3 text-xs font-semibold text-[#64748b] uppercase tracking-wider">Students</th>
-                  <th className="text-left px-4 py-3 text-xs font-semibold text-[#64748b] uppercase tracking-wider hidden lg:table-cell">Progress</th>
-                  <th className="text-left px-4 py-3 text-xs font-semibold text-[#64748b] uppercase tracking-wider">Status</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-[#f1f5f9]">
-                {filtered.map((course) => (
-                  <tr key={course.id} className="hover:bg-[#f8fafc] transition-colors cursor-pointer" onClick={() => toast('Course details coming soon')}>
-                    <td className="px-4 py-3">
-                      <p className="text-sm font-medium text-[#1e293b]">{course.name}</p>
-                      <p className="text-xs text-[#94a3b8] md:hidden">{course.code}</p>
-                    </td>
-                    <td className="px-4 py-3 hidden md:table-cell text-sm text-[#64748b]">{course.code}</td>
-                    <td className="px-4 py-3 text-sm text-[#64748b]">{course.students}</td>
-                    <td className="px-4 py-3 hidden lg:table-cell">
-                      <div className="flex items-center gap-2 w-24">
-                        <Progress value={course.completion} className="h-1.5 flex-1" />
-                        <span className="text-xs text-[#64748b]">{course.completion}%</span>
-                      </div>
-                    </td>
-                    <td className="px-4 py-3">
-                      <Badge variant="outline" className="bg-[#f0fdf4] text-[#22c55e] border-[#22c55e]/20 text-xs capitalize">
-                        {course.status}
-                      </Badge>
-                    </td>
+            <div className="overflow-x-auto">
+              <table className="w-full">
+                <thead>
+                  <tr className="border-b border-[#e2e8f0] bg-[#f8fafc]">
+                    <th className="text-left px-4 py-3 text-xs font-semibold text-[#64748b] uppercase tracking-wider">Course</th>
+                    <th className="text-left px-4 py-3 text-xs font-semibold text-[#64748b] uppercase tracking-wider hidden md:table-cell">Code</th>
+                    <th className="text-left px-4 py-3 text-xs font-semibold text-[#64748b] uppercase tracking-wider">Enrolled</th>
+                    <th className="text-left px-4 py-3 text-xs font-semibold text-[#64748b] uppercase tracking-wider hidden lg:table-cell">Lessons</th>
+                    <th className="text-left px-4 py-3 text-xs font-semibold text-[#64748b] uppercase tracking-wider">Status</th>
                   </tr>
-                ))}
-              </tbody>
-            </table>
+                </thead>
+                <tbody className="divide-y divide-[#f1f5f9]">
+                  {courses.length === 0 ? (
+                    <tr>
+                      <td colSpan={5} className="py-12 text-center text-sm text-muted-foreground">
+                        No courses found
+                      </td>
+                    </tr>
+                  ) : (
+                    courses.map((course) => (
+                      <tr
+                        key={course.id}
+                        className="hover:bg-[#f8fafc] transition-colors cursor-pointer"
+                        onClick={() => toast(`Course: ${course.title}`)}
+                      >
+                        <td className="px-4 py-3">
+                          <p className="text-sm font-medium text-[#1e293b]">{course.title}</p>
+                          <p className="text-xs text-[#94a3b8] md:hidden">{course.slug}</p>
+                        </td>
+                        <td className="px-4 py-3 hidden md:table-cell text-sm text-[#64748b]">{course.slug ?? '—'}</td>
+                        <td className="px-4 py-3 text-sm text-[#64748b]">{course.enrolments_count}</td>
+                        <td className="px-4 py-3 hidden lg:table-cell text-sm text-[#64748b]">{course.lessons_count}</td>
+                        <td className="px-4 py-3">
+                          <StatusBadge status={course.status} />
+                        </td>
+                      </tr>
+                    ))
+                  )}
+                </tbody>
+              </table>
+            </div>
           </Card>
         )}
       </div>
