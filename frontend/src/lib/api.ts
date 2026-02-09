@@ -4,6 +4,7 @@
  */
 
 import { supabase, isSupabaseConfigured } from './supabase';
+import { useEdgeFunctions, callEdgeFunction } from './edge-client';
 import type {
   DbUser, DbCompany, DbCourse, DbLesson, DbTopic, DbQuiz,
   DbStudentCourseEnrolment, DbAdminReport, DbCourseProgress,
@@ -125,6 +126,19 @@ export async function fetchStudents(params?: {
   offset?: number;
 }): Promise<{ data: UserWithDetails[]; total: number }> {
   assertConfigured();
+
+  // Route through edge function if enabled
+  if (useEdgeFunctions) {
+    const queryParams: Record<string, string> = {};
+    if (params?.search) queryParams.search = params.search;
+    if (params?.role) queryParams.role = params.role;
+    if (params?.status) queryParams.status = params.status;
+    if (params?.limit) queryParams.limit = String(params.limit);
+    if (params?.offset) queryParams.offset = String(params.offset);
+    const result = await callEdgeFunction<{ data: UserWithDetails[]; total: number }>('students', { params: queryParams });
+    return result;
+  }
+
   try {
     // First get users
     let query = supabase
@@ -187,6 +201,13 @@ export async function fetchStudents(params?: {
 
 export async function fetchUserById(id: number): Promise<UserWithDetails | null> {
   assertConfigured();
+
+  // Route through edge function if enabled
+  if (useEdgeFunctions) {
+    const result = await callEdgeFunction<UserWithDetails>('students', { path: String(id) });
+    return result;
+  }
+
   try {
     const { data: user, error } = await supabase
       .from('users')
