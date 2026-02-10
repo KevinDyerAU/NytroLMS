@@ -25,6 +25,17 @@ import type { DbAdminReport } from '@/lib/types';
 import { CompetencyMatrix } from '@/components/CompetencyMatrix';
 import { ProgressComparison } from '@/components/ProgressComparison';
 
+/** Safely extract a field from a JSONB object or JSON string column */
+function extractField(val: any, ...fields: string[]): string {
+  if (!val) return '—';
+  const obj = typeof val === 'object' ? val : (() => { try { return JSON.parse(val); } catch { return null; } })();
+  if (!obj) return '—';
+  for (const f of fields) {
+    if (obj[f] !== undefined && obj[f] !== null && obj[f] !== '') return String(obj[f]);
+  }
+  return '—';
+}
+
 const reportCategories = [
   {
     title: 'Enrolment Reports',
@@ -84,6 +95,7 @@ export default function Reports() {
   const [page, setPage] = useState(0);
   const [selectedReportId, setSelectedReportId] = useState<number | null>(null);
   const [reportBuilderOpen, setReportBuilderOpen] = useState(false);
+  const [reportBuilderType, setReportBuilderType] = useState<string | undefined>(undefined);
   const [exporting, setExporting] = useState(false);
   const limit = 25;
 
@@ -152,7 +164,23 @@ export default function Reports() {
                       <div
                         key={report.name}
                         className="flex items-center justify-between p-3 rounded-lg border border-[#e2e8f0] hover:border-[#3b82f6] hover:bg-[#f8fafc] transition-all cursor-pointer group"
-                        onClick={() => setReportBuilderOpen(true)}
+                        onClick={() => {
+                          const typeMap: Record<string, string> = {
+                            'Daily Enrolment Report': 'daily-enrolment',
+                            'Enrolment Summary': 'enrolment-summary',
+                            'Commenced Units Report': 'enrolment-summary',
+                            'Active Students': 'active-students',
+                            'Disengaged Students': 'disengaged-students',
+                            'Student Progress': 'student-progress',
+                            'Pending Assessments': 'pending-assessments',
+                            'Competency Report': 'competency-report',
+                            'Assessment Analytics': 'assessment-analytics',
+                            'Company Summary': 'company-summary',
+                            'Work Placements': 'work-placements',
+                          };
+                          setReportBuilderType(typeMap[report.name]);
+                          setReportBuilderOpen(true);
+                        }}
                       >
                         <div>
                           <p className="text-sm font-medium text-[#1e293b] group-hover:text-[#3b82f6] transition-colors">{report.name}</p>
@@ -241,11 +269,11 @@ export default function Reports() {
                         reports.map((report) => (
                           <tr key={report.id} className="hover:bg-[#f8fafc] transition-colors">
                             <td className="px-4 py-3">
-                              <p className="text-sm font-medium text-[#1e293b]">{report.student_details ? (() => { try { const d = JSON.parse(report.student_details); return d?.name ?? d?.first_name ?? '—'; } catch { return report.student_details; } })() : '—'}</p>
-                              <p className="text-xs text-[#94a3b8]">{report.student_details ? (() => { try { const d = JSON.parse(report.student_details); return d?.email ?? ''; } catch { return ''; } })() : ''}</p>
+                              <p className="text-sm font-medium text-[#1e293b]">{extractField(report.student_details, 'name', 'first_name')}</p>
+                              <p className="text-xs text-[#94a3b8]">{extractField(report.student_details, 'email')}</p>
                             </td>
-                            <td className="px-4 py-3 hidden md:table-cell text-sm text-[#64748b]">{(report as any).company_name ?? (report.company_details ? (() => { try { return JSON.parse(report.company_details)?.name; } catch { return report.company_details; } })() : '—')}</td>
-                            <td className="px-4 py-3 hidden lg:table-cell text-sm text-[#64748b]">{(report as any).course_name ?? (report.course_details ? (() => { try { return JSON.parse(report.course_details)?.title; } catch { return report.course_details; } })() : '—')}</td>
+                            <td className="px-4 py-3 hidden md:table-cell text-sm text-[#64748b]">{extractField(report.company_details, 'name')}</td>
+                            <td className="px-4 py-3 hidden lg:table-cell text-sm text-[#64748b]">{extractField(report.course_details, 'title')}</td>
                             <td className="px-4 py-3">
                               <Badge variant="outline" className={`text-xs font-medium ${statusColors[report.student_status] ?? 'bg-[#f1f5f9] text-[#64748b] border-[#64748b]/20'}`}>
                                 {report.student_status ?? 'Unknown'}
@@ -345,7 +373,8 @@ export default function Reports() {
 
       <ReportBuilderDialog
         open={reportBuilderOpen}
-        onOpenChange={setReportBuilderOpen}
+        onOpenChange={(open) => { setReportBuilderOpen(open); if (!open) setReportBuilderType(undefined); }}
+        preSelectedType={reportBuilderType}
       />
 
       {selectedReportId !== null && (

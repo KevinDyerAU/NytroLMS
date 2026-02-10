@@ -17,19 +17,20 @@ interface ReportDetailDialogProps {
   reportId: number;
 }
 
-function safeParseJson(str: string | null): Record<string, unknown> | null {
-  if (!str) return null;
-  try { return JSON.parse(str); } catch { return null; }
+function safeParseJson(val: any): Record<string, unknown> | null {
+  if (!val) return null;
+  if (typeof val === 'object') return val as Record<string, unknown>;
+  try { return JSON.parse(val); } catch { return null; }
 }
 
-function extractName(jsonStr: string | null): string {
-  const obj = safeParseJson(jsonStr);
-  if (!obj) return jsonStr ?? '—';
-  return (obj.name as string) ?? (obj.first_name ? `${obj.first_name} ${obj.last_name ?? ''}`.trim() : jsonStr ?? '—');
+function extractName(val: any): string {
+  const obj = safeParseJson(val);
+  if (!obj) return '—';
+  return (obj.name as string) ?? (obj.first_name ? `${obj.first_name} ${obj.last_name ?? ''}`.trim() : '—');
 }
 
-function extractEmail(jsonStr: string | null): string {
-  const obj = safeParseJson(jsonStr);
+function extractEmail(val: any): string {
+  const obj = safeParseJson(val);
   return (obj?.email as string) ?? '';
 }
 

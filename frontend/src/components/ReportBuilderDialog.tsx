@@ -19,6 +19,7 @@ import { toast } from 'sonner';
 interface ReportBuilderDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
+  preSelectedType?: string;
 }
 
 interface ReportType {
@@ -131,7 +132,7 @@ const categoryColors: Record<string, string> = {
   company: 'bg-[#f5f3ff] text-[#8b5cf6] border-[#8b5cf6]/20',
 };
 
-export function ReportBuilderDialog({ open, onOpenChange }: ReportBuilderDialogProps) {
+export function ReportBuilderDialog({ open, onOpenChange, preSelectedType }: ReportBuilderDialogProps) {
   const [selectedReport, setSelectedReport] = useState<string>('');
   const [generating, setGenerating] = useState(false);
   const [generatedReport, setGeneratedReport] = useState<GeneratedReport | null>(null);
@@ -140,6 +141,10 @@ export function ReportBuilderDialog({ open, onOpenChange }: ReportBuilderDialogP
   const [startDate, setStartDate] = useState('');
   const [endDate, setEndDate] = useState('');
   const [status, setStatus] = useState('');
+
+  // Auto-select when preSelectedType is provided
+  const effectiveSelection = preSelectedType || selectedReport;
+  const isPreSelected = !!preSelectedType;
 
   const resetForm = () => {
     setSelectedReport('');
@@ -155,7 +160,7 @@ export function ReportBuilderDialog({ open, onOpenChange }: ReportBuilderDialogP
   };
 
   const handleGenerate = async () => {
-    if (!selectedReport) {
+    if (!effectiveSelection) {
       toast.error('Please select a report type');
       return;
     }
@@ -167,9 +172,9 @@ export function ReportBuilderDialog({ open, onOpenChange }: ReportBuilderDialogP
       if (endDate) filters.endDate = `${endDate}T23:59:59`;
       if (status) filters.status = status;
 
-      const report = await buildReport(selectedReport, filters);
+      const report = await buildReport(effectiveSelection, filters);
       setGeneratedReport(report);
-      toast.success(`Generated ${report.reportType} with ${report.recordCount} records`);
+      toast.success(`Generated report with ${report.recordCount} records`);
     } catch (err) {
       toast.error(err instanceof Error ? err.message : 'Failed to generate report');
     } finally {
@@ -204,100 +209,114 @@ export function ReportBuilderDialog({ open, onOpenChange }: ReportBuilderDialogP
     toast.success('PDF print dialog opened');
   };
 
-  const selectedReportType = reportTypes.find(r => r.id === selectedReport);
+  const selectedReportType = reportTypes.find(r => r.id === effectiveSelection);
 
   return (
     <Dialog open={open} onOpenChange={(v) => { if (!v) resetForm(); onOpenChange(v); }}>
-      <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto">
+      <DialogContent className={`${isPreSelected ? 'max-w-xl' : 'max-w-4xl'} max-h-[90vh] overflow-y-auto`}>
         <DialogHeader>
-          <DialogTitle>Report Builder</DialogTitle>
+          <DialogTitle>
+            {isPreSelected && selectedReportType
+              ? selectedReportType.name
+              : 'Report Builder'}
+          </DialogTitle>
         </DialogHeader>
 
         <div className="space-y-6">
-          {/* Report Type Selection */}
+          {/* Report Type Selection — hidden when pre-selected */}
           {!generatedReport && (
             <>
-              <div className="space-y-3">
-                <Label>Select Report Type</Label>
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                  {reportTypes.map((report) => {
-                    const Icon = report.icon;
-                    return (
-                      <Card
-                        key={report.id}
-                        className={`p-4 cursor-pointer transition-all border-2 ${
-                          selectedReport === report.id
-                            ? 'border-[#3b82f6] bg-[#f8fafc]'
-                            : 'border-transparent hover:border-[#3b82f6]/20'
-                        }`}
-                        onClick={() => setSelectedReport(report.id)}
-                      >
-                        <div className="flex items-start gap-3">
-                          <div className={`p-2 rounded-lg ${categoryColors[report.category]}`}>
-                            <Icon className="w-4 h-4" />
-                          </div>
-                          <div className="flex-1 min-w-0">
-                            <div className="flex items-center gap-2">
-                              <h4 className="font-medium text-[#1e293b] text-sm">{report.name}</h4>
-                              <Badge variant="outline" className={`text-[10px] ${categoryColors[report.category]}`}>
-                                {report.category}
-                              </Badge>
+              {!isPreSelected && (
+                <div className="space-y-3">
+                  <Label>Select Report Type</Label>
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                    {reportTypes.map((report) => {
+                      const Icon = report.icon;
+                      return (
+                        <Card
+                          key={report.id}
+                          className={`p-4 cursor-pointer transition-all border-2 ${
+                            effectiveSelection === report.id
+                              ? 'border-[#3b82f6] bg-[#f8fafc]'
+                              : 'border-transparent hover:border-[#3b82f6]/20'
+                          }`}
+                          onClick={() => setSelectedReport(report.id)}
+                        >
+                          <div className="flex items-start gap-3">
+                            <div className={`p-2 rounded-lg ${categoryColors[report.category]}`}>
+                              <Icon className="w-4 h-4" />
                             </div>
-                            <p className="text-xs text-[#94a3b8] mt-1">{report.description}</p>
+                            <div className="flex-1 min-w-0">
+                              <div className="flex items-center gap-2">
+                                <h4 className="font-medium text-[#1e293b] text-sm">{report.name}</h4>
+                                <Badge variant="outline" className={`text-[10px] ${categoryColors[report.category]}`}>
+                                  {report.category}
+                                </Badge>
+                              </div>
+                              <p className="text-xs text-[#94a3b8] mt-1">{report.description}</p>
+                            </div>
                           </div>
-                        </div>
-                      </Card>
-                    );
-                  })}
+                        </Card>
+                      );
+                    })}
+                  </div>
                 </div>
-              </div>
+              )}
 
               {/* Filters */}
               {selectedReportType && (
-                <div className="space-y-4 border-t border-[#3b82f6]/10 pt-4">
-                  <Label>Report Filters</Label>
-                  <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
-                    {selectedReportType.supportsDateRange && (
-                      <>
-                        <div>
-                          <Label htmlFor="startDate" className="text-xs">Start Date</Label>
-                          <Input
-                            id="startDate"
-                            type="date"
-                            value={startDate}
-                            onChange={(e) => setStartDate(e.target.value)}
-                          />
-                        </div>
-                        <div>
-                          <Label htmlFor="endDate" className="text-xs">End Date</Label>
-                          <Input
-                            id="endDate"
-                            type="date"
-                            value={endDate}
-                            onChange={(e) => setEndDate(e.target.value)}
-                          />
-                        </div>
-                      </>
-                    )}
-                    {selectedReportType.supportsStatus && (
-                      <div>
-                        <Label htmlFor="status" className="text-xs">Status</Label>
-                        <Select value={status} onValueChange={setStatus}>
-                          <SelectTrigger id="status">
-                            <SelectValue placeholder="All statuses" />
-                          </SelectTrigger>
-                          <SelectContent>
-                            <SelectItem value="all">All Statuses</SelectItem>
-                            <SelectItem value="ACTIVE">Active</SelectItem>
-                            <SelectItem value="COMPLETED">Completed</SelectItem>
-                            <SelectItem value="WITHDRAWN">Withdrawn</SelectItem>
-                            <SelectItem value="DEFERRED">Deferred</SelectItem>
-                            <SelectItem value="CANCELLED">Cancelled</SelectItem>
-                          </SelectContent>
-                        </Select>
+                <div className={`space-y-4 ${!isPreSelected ? 'border-t border-[#3b82f6]/10 pt-4' : ''}`}>
+                  {selectedReportType.supportsDateRange || selectedReportType.supportsStatus ? (
+                    <>
+                      <Label>Filters</Label>
+                      <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
+                        {selectedReportType.supportsDateRange && (
+                          <>
+                            <div>
+                              <Label htmlFor="startDate" className="text-xs">Start Date</Label>
+                              <Input
+                                id="startDate"
+                                type="date"
+                                value={startDate}
+                                onChange={(e) => setStartDate(e.target.value)}
+                              />
+                            </div>
+                            <div>
+                              <Label htmlFor="endDate" className="text-xs">End Date</Label>
+                              <Input
+                                id="endDate"
+                                type="date"
+                                value={endDate}
+                                onChange={(e) => setEndDate(e.target.value)}
+                              />
+                            </div>
+                          </>
+                        )}
+                        {selectedReportType.supportsStatus && (
+                          <div>
+                            <Label htmlFor="status" className="text-xs">Status</Label>
+                            <Select value={status} onValueChange={setStatus}>
+                              <SelectTrigger id="status">
+                                <SelectValue placeholder="All statuses" />
+                              </SelectTrigger>
+                              <SelectContent>
+                                <SelectItem value="all">All Statuses</SelectItem>
+                                <SelectItem value="ACTIVE">Active</SelectItem>
+                                <SelectItem value="COMPLETED">Completed</SelectItem>
+                                <SelectItem value="WITHDRAWN">Withdrawn</SelectItem>
+                                <SelectItem value="DEFERRED">Deferred</SelectItem>
+                                <SelectItem value="CANCELLED">Cancelled</SelectItem>
+                              </SelectContent>
+                            </Select>
+                          </div>
+                        )}
                       </div>
-                    )}
-                  </div>
+                    </>
+                  ) : isPreSelected ? (
+                    <p className="text-sm text-[#64748b]">
+                      {selectedReportType.description}. Click <strong>Generate Report</strong> to continue.
+                    </p>
+                  ) : null}
                 </div>
               )}
             </>
@@ -375,7 +394,7 @@ export function ReportBuilderDialog({ open, onOpenChange }: ReportBuilderDialogP
           {!generatedReport && (
             <Button
               className="bg-[#3b82f6] hover:bg-[#2563eb] text-white"
-              disabled={!selectedReport || generating}
+              disabled={!effectiveSelection || generating}
               onClick={handleGenerate}
             >
               {generating && <Loader2 className="w-4 h-4 mr-1.5 animate-spin" />}

@@ -3597,11 +3597,194 @@ export interface GeneratedReport {
 export async function buildReport(reportType: string, filters?: ReportFilters): Promise<GeneratedReport> {
   assertConfigured();
   try {
-    const { data, error } = await supabase.functions.invoke('reports/build', {
-      body: { reportType, filters: filters || {} },
-    });
-    if (error) throw error;
-    return data as GeneratedReport;
+    let data: Record<string, unknown>[] = [];
+
+    switch (reportType) {
+      case 'daily-enrolment':
+      case 'enrolment-summary': {
+        let q = supabase
+          .from('student_course_enrolments')
+          .select('id, user_id, course_id, status, course_start_at, course_ends_at, course_completed_at, course_expiry, created_at');
+        if (filters?.startDate) q = q.gte('created_at', filters.startDate);
+        if (filters?.endDate) q = q.lte('created_at', filters.endDate);
+        if (filters?.status && filters.status !== 'all') q = q.eq('status', filters.status);
+        q = q.order('created_at', { ascending: false }).limit(500);
+        const { data: enrols, error } = await q;
+        if (error) throw error;
+        const uIds = [...new Set((enrols ?? []).map(e => e.user_id))];
+        const cIds = [...new Set((enrols ?? []).map(e => e.course_id))];
+        const [{ data: users }, { data: courses }] = await Promise.all([
+          uIds.length > 0 ? supabase.from('users').select('id, first_name, last_name, email').in('id', uIds) : Promise.resolve({ data: [] as any[] }),
+          cIds.length > 0 ? supabase.from('courses').select('id, title').in('id', cIds) : Promise.resolve({ data: [] as any[] }),
+        ]);
+        const uMap = new Map((users ?? []).map(u => [u.id, u]));
+        const cMap = new Map((courses ?? []).map(c => [c.id, c.title]));
+        data = (enrols ?? []).map(e => {
+          const u = uMap.get(e.user_id);
+          return {
+            'Student': u ? `${u.first_name} ${u.last_name}` : '',
+            'Email': u?.email ?? '',
+            'Course': cMap.get(e.course_id) ?? '',
+            'Status': e.status ?? '',
+            'Start Date': fmtDate(e.course_start_at),
+            'End Date': fmtDate(e.course_ends_at),
+            'Completed': fmtDate(e.course_completed_at),
+            'Enrolled': fmtDate(e.created_at),
+          };
+        });
+        break;
+      }
+      case 'active-students': {
+        const { data: users, error } = await supabase
+          .from('users').select('id, first_name, last_name, email, created_at')
+          .eq('is_active', 1).eq('is_archived', 0).order('first_name').limit(500);
+        if (error) throw error;
+        data = (users ?? []).map(u => ({
+          'Name': `${u.first_name} ${u.last_name}`,
+          'Email': u.email,
+          'Created': fmtDate(u.created_at),
+        }));
+        break;
+      }
+      case 'disengaged-students': {
+        const cutoff = new Date(Date.now() - 30 * 86400000).toISOString();
+        const { data: users, error } = await supabase
+          .from('users').select('id, first_name, last_name, email, last_logged_in')
+          .eq('is_active', 1).eq('is_archived', 0)
+          .or(`last_logged_in.is.null,last_logged_in.lt.${cutoff}`)
+          .order('last_logged_in', { ascending: true, nullsFirst: true }).limit(500);
+        if (error) throw error;
+        data = (users ?? []).map(u => ({
+          'Name': `${u.first_name} ${u.last_name}`,
+          'Email': u.email,
+          'Last Login': u.last_logged_in ? fmtDate(u.last_logged_in) : 'Never',
+        }));
+        break;
+      }
+      case 'student-progress': {
+        const { data: progress, error } = await supabase
+          .from('admin_reports').select('*').order('updated_at', { ascending: false }).limit(500);
+        if (error) throw error;
+        data = (progress ?? []).map(r => {
+          const student = safeJson(r.student_details);
+          const course = safeJson(r.course_details);
+          const prog = safeJson(r.student_course_progress);
+          return {
+            'Student': student?.name ?? '',
+            'Email': student?.email ?? '',
+            'Course': course?.title ?? '',
+            'Status': r.student_status ?? '',
+            'Progress': `${prog?.current_course_progress ?? 0}%`,
+            'Start': fmtDate(r.student_course_start_date),
+            'End': fmtDate(r.student_course_end_date),
+          };
+        });
+        break;
+      }
+      case 'pending-assessments': {
+        const { data: attempts, error } = await supabase
+          .from('quiz_attempts').select('id, user_id, course_id, quiz_id, status, submitted_at')
+          .eq('status', 'SUBMITTED').order('submitted_at', { ascending: false }).limit(500);
+        if (error) throw error;
+        const uIds = [...new Set((attempts ?? []).map(a => a.user_id))];
+        const qIds = [...new Set((attempts ?? []).map(a => a.quiz_id))];
+        const [{ data: users }, { data: quizzes }] = await Promise.all([
+          uIds.length > 0 ? supabase.from('users').select('id, first_name, last_name').in('id', uIds) : Promise.resolve({ data: [] as any[] }),
+          qIds.length > 0 ? supabase.from('quizzes').select('id, title').in('id', qIds) : Promise.resolve({ data: [] as any[] }),
+        ]);
+        const uMap = new Map((users ?? []).map(u => [u.id, `${u.first_name} ${u.last_name}`]));
+        const qMap = new Map((quizzes ?? []).map(q => [q.id, q.title]));
+        data = (attempts ?? []).map(a => ({
+          'Student': uMap.get(a.user_id) ?? '',
+          'Assessment': qMap.get(a.quiz_id) ?? '',
+          'Status': a.status,
+          'Submitted': fmtDate(a.submitted_at),
+        }));
+        break;
+      }
+      case 'competency-report': {
+        const { data: comps, error } = await supabase
+          .from('competencies').select('id, user_id, lesson_id, status, created_at')
+          .order('created_at', { ascending: false }).limit(500);
+        if (error) throw error;
+        const uIds = [...new Set((comps ?? []).map(c => c.user_id))];
+        const lIds = [...new Set((comps ?? []).map(c => c.lesson_id))];
+        const [{ data: users }, { data: lessons }] = await Promise.all([
+          uIds.length > 0 ? supabase.from('users').select('id, first_name, last_name').in('id', uIds) : Promise.resolve({ data: [] as any[] }),
+          lIds.length > 0 ? supabase.from('lessons').select('id, title').in('id', lIds) : Promise.resolve({ data: [] as any[] }),
+        ]);
+        const uMap = new Map((users ?? []).map(u => [u.id, `${u.first_name} ${u.last_name}`]));
+        const lMap = new Map((lessons ?? []).map(l => [l.id, l.title]));
+        data = (comps ?? []).map(c => ({
+          'Student': uMap.get(c.user_id) ?? '',
+          'Unit': lMap.get(c.lesson_id) ?? '',
+          'Status': c.status ?? '',
+          'Date': fmtDate(c.created_at),
+        }));
+        break;
+      }
+      case 'assessment-analytics': {
+        let q = supabase
+          .from('quiz_attempts').select('id, user_id, quiz_id, status, submitted_at')
+          .not('submitted_at', 'is', null);
+        if (filters?.startDate) q = q.gte('submitted_at', filters.startDate);
+        if (filters?.endDate) q = q.lte('submitted_at', filters.endDate);
+        q = q.order('submitted_at', { ascending: false }).limit(500);
+        const { data: attempts, error } = await q;
+        if (error) throw error;
+        const statusCounts: Record<string, number> = {};
+        (attempts ?? []).forEach(a => { statusCounts[a.status] = (statusCounts[a.status] ?? 0) + 1; });
+        data = Object.entries(statusCounts).map(([status, count]) => ({
+          'Status': status,
+          'Count': count,
+          'Percentage': `${((count / (attempts?.length || 1)) * 100).toFixed(1)}%`,
+        }));
+        break;
+      }
+      case 'company-summary': {
+        const { data: companies, error } = await supabase
+          .from('companies').select('id, name, email, phone, created_at')
+          .order('name').limit(500);
+        if (error) throw error;
+        data = (companies ?? []).map(c => ({
+          'Company': c.name ?? '',
+          'Email': c.email ?? '',
+          'Phone': c.phone ?? '',
+          'Created': fmtDate(c.created_at),
+        }));
+        break;
+      }
+      case 'work-placements': {
+        const { data: placements, error } = await supabase
+          .from('student_lms_attachables')
+          .select('id, student_id, description, created_at')
+          .eq('event', 'WORK_PLACEMENT')
+          .order('created_at', { ascending: false }).limit(500);
+        if (error) throw error;
+        const uIds = [...new Set((placements ?? []).map(p => p.student_id))];
+        const { data: users } = uIds.length > 0
+          ? await supabase.from('users').select('id, first_name, last_name').in('id', uIds)
+          : { data: [] as any[] };
+        const uMap = new Map((users ?? []).map(u => [u.id, `${u.first_name} ${u.last_name}`]));
+        data = (placements ?? []).map(p => ({
+          'Student': uMap.get(p.student_id) ?? '',
+          'Description': p.description ?? '',
+          'Date': fmtDate(p.created_at),
+        }));
+        break;
+      }
+      default:
+        throw new Error(`Unknown report type: ${reportType}`);
+    }
+
+    return {
+      reportType,
+      generatedAt: new Date().toISOString(),
+      generatedBy: 'admin',
+      recordCount: data.length,
+      filters: filters ?? {},
+      data,
+    };
   } catch (e) {
     handleError(e, 'Failed to generate report');
   }
@@ -3623,6 +3806,13 @@ export async function fetchAdminReports(params?: {
 
     if (params?.status && params.status !== 'all') {
       query = query.eq('student_status', params.status);
+    }
+
+    if (params?.search && params.search.trim()) {
+      const s = params.search.trim();
+      query = query.or(
+        `student_details->>name.ilike.%${s}%,student_details->>email.ilike.%${s}%,course_details->>title.ilike.%${s}%`
+      );
     }
 
     query = query
