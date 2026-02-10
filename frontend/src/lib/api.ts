@@ -6117,7 +6117,8 @@ export type CalendarEventType =
   | 'course_expiry'
   | 'course_completed'
   | 'assessment_submitted'
-  | 'cert_issued';
+  | 'cert_issued'
+  | 'overdue';
 
 export interface CalendarEvent {
   id: string;
@@ -6139,44 +6140,65 @@ export interface CalendarEvent {
 export async function fetchCalendarEvents(params: {
   from: string;   // ISO date YYYY-MM-DD
   to: string;     // ISO date YYYY-MM-DD
+  studentId?: number;  // optional: filter to a specific student
 }): Promise<CalendarEvent[]> {
   assertConfigured();
   try {
     const { from, to } = params;
     const toEnd = `${to}T23:59:59`;
 
+    const today = new Date().toISOString().slice(0, 10);
+
+    // Build enrolment query with optional student filter
+    let enrolQuery = supabase
+      .from('student_course_enrolments')
+      .select('id, user_id, course_id, status, course_start_at, course_ends_at, course_expiry, course_completed_at, cert_issued, cert_issued_on')
+      .or(
+        `course_start_at.gte.${from},course_start_at.lte.${toEnd},` +
+        `course_ends_at.gte.${from},course_ends_at.lte.${toEnd},` +
+        `course_expiry.gte.${from},course_expiry.lte.${toEnd},` +
+        `course_completed_at.gte.${from},course_completed_at.lte.${toEnd},` +
+        `cert_issued_on.gte.${from},cert_issued_on.lte.${toEnd}`
+      );
+    if (params.studentId) enrolQuery = enrolQuery.eq('user_id', params.studentId);
+
+    // Build assessment query with optional student filter
+    let assessQuery = supabase
+      .from('quiz_attempts')
+      .select('id, user_id, course_id, quiz_id, status, submitted_at')
+      .not('submitted_at', 'is', null)
+      .gte('submitted_at', from)
+      .lte('submitted_at', toEnd);
+    if (params.studentId) assessQuery = assessQuery.eq('user_id', params.studentId);
+
+    // Also fetch overdue enrolments (past due, not completed) that may be outside the visible range
+    let overdueQuery = supabase
+      .from('student_course_enrolments')
+      .select('id, user_id, course_id, status, course_start_at, course_ends_at, course_expiry, course_completed_at, cert_issued, cert_issued_on')
+      .not('course_ends_at', 'is', null)
+      .lt('course_ends_at', today)
+      .not('status', 'eq', 'COMPLETED');
+    if (params.studentId) overdueQuery = overdueQuery.eq('user_id', params.studentId);
+
     // Parallel-fetch all event sources
     const [
       { data: enrolments },
       { data: assessments },
-    ] = await Promise.all([
-      // 1. Enrolment date events (start, end, expiry, completed, cert issued)
-      supabase
-        .from('student_course_enrolments')
-        .select('id, user_id, course_id, status, course_start_at, course_ends_at, course_expiry, course_completed_at, cert_issued, cert_issued_on')
-        .or(
-          `course_start_at.gte.${from},course_start_at.lte.${toEnd},` +
-          `course_ends_at.gte.${from},course_ends_at.lte.${toEnd},` +
-          `course_expiry.gte.${from},course_expiry.lte.${toEnd},` +
-          `course_completed_at.gte.${from},course_completed_at.lte.${toEnd},` +
-          `cert_issued_on.gte.${from},cert_issued_on.lte.${toEnd}`
-        ),
+      { data: overdueEnrolments },
+    ] = await Promise.all([enrolQuery, assessQuery, overdueQuery]);
 
-      // 2. Assessment submissions
-      supabase
-        .from('quiz_attempts')
-        .select('id, user_id, course_id, quiz_id, status, submitted_at')
-        .not('submitted_at', 'is', null)
-        .gte('submitted_at', from)
-        .lte('submitted_at', toEnd),
-    ]);
+    // Merge overdue enrolments into enrolments (deduplicate by id)
+    const enrolmentMap = new Map<number, typeof enrolments extends (infer T)[] | null ? T : never>();
+    (enrolments ?? []).forEach(e => enrolmentMap.set(e.id, e));
+    (overdueEnrolments ?? []).forEach(e => { if (!enrolmentMap.has(e.id)) enrolmentMap.set(e.id, e); });
+    const allEnrolments = Array.from(enrolmentMap.values());
 
     // Collect IDs for name resolution
     const userIds = new Set<number>();
     const courseIds = new Set<number>();
     const quizIds = new Set<number>();
 
-    (enrolments ?? []).forEach(e => { userIds.add(e.user_id); courseIds.add(e.course_id); });
+    allEnrolments.forEach(e => { userIds.add(e.user_id); courseIds.add(e.course_id); });
     (assessments ?? []).forEach(a => { userIds.add(a.user_id); courseIds.add(a.course_id); quizIds.add(a.quiz_id); });
 
     // Resolve names in parallel
@@ -6213,7 +6235,7 @@ export async function fetchCalendarEvents(params: {
     const events: CalendarEvent[] = [];
     const inRange = (d: string | null) => d && d >= from && d <= toEnd;
 
-    (enrolments ?? []).forEach(e => {
+    allEnrolments.forEach(e => {
       const sName = userMap.get(e.user_id) ?? 'Unknown';
       const cTitle = courseMap.get(e.course_id) ?? 'Unknown Course';
       const baseMeta = { studentId: e.user_id, studentName: sName, courseId: e.course_id, courseTitle: cTitle, status: e.status, enrolmentId: e.id };
@@ -6227,14 +6249,28 @@ export async function fetchCalendarEvents(params: {
           meta: baseMeta,
         });
       }
-      if (inRange(e.course_ends_at)) {
-        events.push({
-          id: `enrol-end-${e.id}`,
-          title: `${sName} — Course Due: ${cTitle}`,
-          date: e.course_ends_at!.slice(0, 10),
-          type: 'course_end',
-          meta: baseMeta,
-        });
+      // Overdue detection: due date passed and not completed
+      if (e.course_ends_at) {
+        const dueDate = e.course_ends_at.slice(0, 10);
+        const isOverdue = dueDate < today && e.status !== 'COMPLETED';
+        if (isOverdue) {
+          // Show overdue on today's date for visibility
+          events.push({
+            id: `overdue-${e.id}`,
+            title: `${sName} — OVERDUE: ${cTitle}`,
+            date: dueDate,
+            type: 'overdue',
+            meta: baseMeta,
+          });
+        } else if (inRange(e.course_ends_at)) {
+          events.push({
+            id: `enrol-end-${e.id}`,
+            title: `${sName} — Course Due: ${cTitle}`,
+            date: dueDate,
+            type: 'course_end',
+            meta: baseMeta,
+          });
+        }
       }
       if (inRange(e.course_expiry)) {
         events.push({
@@ -6289,5 +6325,59 @@ export async function fetchCalendarEvents(params: {
     return events;
   } catch (e) {
     handleError(e, 'Failed to fetch calendar events');
+  }
+}
+
+/** Lightweight student search for calendar filter dropdown */
+export async function fetchStudentListForCalendar(search?: string): Promise<{ id: number; name: string }[]> {
+  assertConfigured();
+  try {
+    let query = supabase
+      .from('users')
+      .select('id, first_name, last_name')
+      .eq('is_archived', 0)
+      .eq('is_active', 1)
+      .order('first_name')
+      .limit(50);
+
+    if (search && search.trim()) {
+      query = query.or(
+        `first_name.ilike.%${search.trim()}%,last_name.ilike.%${search.trim()}%,email.ilike.%${search.trim()}%`
+      );
+    }
+
+    const { data, error } = await query;
+    if (error) throw error;
+    return (data ?? []).map(u => ({ id: u.id, name: `${u.first_name} ${u.last_name}` }));
+  } catch (e) {
+    handleError(e, 'Failed to fetch students');
+  }
+}
+
+/** Update due date (course_ends_at) on an enrolment */
+export async function updateEnrolmentDueDate(enrolmentId: number, newDate: string): Promise<void> {
+  assertConfigured();
+  try {
+    const { error } = await supabase
+      .from('student_course_enrolments')
+      .update({ course_ends_at: newDate })
+      .eq('id', enrolmentId);
+    if (error) throw error;
+  } catch (e) {
+    handleError(e, 'Failed to update due date');
+  }
+}
+
+/** Clear due date (course_ends_at) on an enrolment */
+export async function clearEnrolmentDueDate(enrolmentId: number): Promise<void> {
+  assertConfigured();
+  try {
+    const { error } = await supabase
+      .from('student_course_enrolments')
+      .update({ course_ends_at: null })
+      .eq('id', enrolmentId);
+    if (error) throw error;
+  } catch (e) {
+    handleError(e, 'Failed to clear due date');
   }
 }
