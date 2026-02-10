@@ -27,6 +27,11 @@ interface AuthContextType {
   updateUser: (user: User) => void;
   signUp: (email: string, password: string, firstName: string, lastName: string) => Promise<{ success: boolean; error?: string }>;
   resetPassword: (email: string) => Promise<{ success: boolean; error?: string }>;
+  impersonatedUser: User | null;
+  impersonate: (user: User) => void;
+  stopImpersonating: () => void;
+  isImpersonating: boolean;
+  realUser: User | null;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
@@ -87,6 +92,15 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
   const [session, setSession] = useState<Session | null>(null);
   const [isLoading, setIsLoading] = useState(true);
+  const [impersonatedUser, setImpersonatedUser] = useState<User | null>(null);
+
+  const impersonate = useCallback((targetUser: User) => {
+    setImpersonatedUser(targetUser);
+  }, []);
+
+  const stopImpersonating = useCallback(() => {
+    setImpersonatedUser(null);
+  }, []);
 
   // Listen for Supabase auth state changes
   useEffect(() => {
@@ -290,10 +304,12 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     setUser(updatedUser);
   }, []);
 
+  const effectiveUser = impersonatedUser ?? user;
+
   return (
     <AuthContext.Provider
       value={{
-        user,
+        user: effectiveUser,
         session,
         isAuthenticated: !!user && !!session,
         isLoading,
@@ -302,6 +318,11 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         updateUser,
         signUp,
         resetPassword,
+        impersonatedUser,
+        impersonate,
+        stopImpersonating,
+        isImpersonating: !!impersonatedUser,
+        realUser: user,
       }}
     >
       {children}

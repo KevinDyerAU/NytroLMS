@@ -2,21 +2,22 @@
  * Enrolments Page — Manage student course enrolments
  * Connected to Supabase: student_course_enrolments, users, courses
  */
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import { DashboardLayout } from '../components/DashboardLayout';
 import { EnrolmentDetailDialog } from '../components/EnrolmentDetailDialog';
 import { NewEnrolmentDialog } from '../components/NewEnrolmentDialog';
+import { BatchEnrolmentDialog } from '../components/BatchEnrolmentDialog';
 import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { Search, Plus, Download, Eye, Loader2, AlertCircle } from 'lucide-react';
+import { Search, Plus, Download, Eye, Loader2, AlertCircle, Users } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { toast } from 'sonner';
 import { exportToCSV } from '@/lib/utils';
 import { useSupabaseQuery } from '@/hooks/useSupabaseQuery';
-import { fetchEnrolments, EnrolmentWithDetails } from '@/lib/api';
+import { fetchEnrolments, fetchAvailableCourses, EnrolmentWithDetails } from '@/lib/api';
 
 const statusColors: Record<string, string> = {
   ACTIVE: 'bg-[#f0fdf4] text-[#22c55e] border-[#22c55e]/20',
@@ -29,14 +30,23 @@ const statusColors: Record<string, string> = {
 export default function Enrolments() {
   const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState('all');
+  const [courseFilter, setCourseFilter] = useState('all');
+  const [courses, setCourses] = useState<{ id: number; title: string }[]>([]);
   const [page, setPage] = useState(0);
   const [selectedEnrolmentId, setSelectedEnrolmentId] = useState<number | null>(null);
   const [addDialogOpen, setAddDialogOpen] = useState(false);
+  const [batchDialogOpen, setBatchDialogOpen] = useState(false);
   const limit = 25;
 
+  useEffect(() => {
+    fetchAvailableCourses().then(c => setCourses((c ?? []).map(x => ({ id: x.id, title: x.title }))));
+  }, []);
+
+  const courseId = courseFilter !== 'all' ? parseInt(courseFilter, 10) : undefined;
+
   const { data, loading, error, refetch } = useSupabaseQuery(
-    () => fetchEnrolments({ search, status: statusFilter, limit, offset: page * limit }),
-    [search, statusFilter, page]
+    () => fetchEnrolments({ search, status: statusFilter, courseId, limit, offset: page * limit }),
+    [search, statusFilter, courseId, page]
   );
 
   const enrolments = data?.data ?? [];
@@ -68,6 +78,17 @@ export default function Enrolments() {
                 <SelectItem value="WITHDRAWN">Withdrawn</SelectItem>
                 <SelectItem value="DEFERRED">Deferred</SelectItem>
                 <SelectItem value="CANCELLED">Cancelled</SelectItem>
+              </SelectContent>
+            </Select>
+            <Select value={courseFilter} onValueChange={(v) => { setCourseFilter(v); setPage(0); }}>
+              <SelectTrigger className="w-44 h-9 border-[#e2e8f0]">
+                <SelectValue placeholder="All Courses" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">All Courses</SelectItem>
+                {courses.map(c => (
+                  <SelectItem key={c.id} value={String(c.id)}>{c.title}</SelectItem>
+                ))}
               </SelectContent>
             </Select>
           </div>
@@ -104,6 +125,9 @@ export default function Enrolments() {
               toast.success('Enrolments exported to CSV');
             }}>
               <Download className="w-4 h-4 mr-1.5" /> Export
+            </Button>
+            <Button variant="outline" size="sm" className="border-[#e2e8f0] text-[#64748b]" onClick={() => setBatchDialogOpen(true)}>
+              <Users className="w-4 h-4 mr-1.5" /> Batch Enrol
             </Button>
             <Button size="sm" className="bg-[#3b82f6] hover:bg-[#2563eb] text-white" onClick={() => setAddDialogOpen(true)}>
               <Plus className="w-4 h-4 mr-1.5" /> New Enrolment
@@ -209,6 +233,12 @@ export default function Enrolments() {
       <NewEnrolmentDialog
         open={addDialogOpen}
         onOpenChange={setAddDialogOpen}
+        onSaved={() => { refetch(); }}
+      />
+
+      <BatchEnrolmentDialog
+        open={batchDialogOpen}
+        onOpenChange={setBatchDialogOpen}
         onSaved={() => { refetch(); }}
       />
     </DashboardLayout>

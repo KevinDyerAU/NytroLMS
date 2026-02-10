@@ -111,6 +111,74 @@ export async function fetchRecentActivity(limit = 20): Promise<DbActivityLog[]> 
   }
 }
 
+export async function fetchActivityFeed(params?: {
+  search?: string;
+  eventType?: string;
+  dateFrom?: string;
+  dateTo?: string;
+  limit?: number;
+  offset?: number;
+}): Promise<{ data: (DbActivityLog & { causer_name?: string; subject_name?: string })[]; total: number }> {
+  assertConfigured();
+  try {
+    let query = supabase
+      .from('activity_log')
+      .select('*', { count: 'exact' });
+
+    if (params?.eventType && params.eventType !== 'all') {
+      query = query.eq('description', params.eventType);
+    }
+    if (params?.dateFrom) {
+      query = query.gte('created_at', params.dateFrom);
+    }
+    if (params?.dateTo) {
+      query = query.lte('created_at', `${params.dateTo}T23:59:59`);
+    }
+
+    query = query
+      .order('created_at', { ascending: false })
+      .range(params?.offset ?? 0, (params?.offset ?? 0) + (params?.limit ?? 50) - 1);
+
+    const { data: logs, error, count } = await query;
+    if (error) throw error;
+
+    // Resolve causer and subject names
+    const causerIds = Array.from(new Set((logs ?? []).filter(l => l.causer_id).map(l => l.causer_id!)));
+    const subjectIds = Array.from(new Set((logs ?? []).filter(l => l.subject_id && l.subject_type === 'App\\Models\\User').map(l => l.subject_id!)));
+    const allUserIds = Array.from(new Set([...causerIds, ...subjectIds]));
+
+    let userMap = new Map<number, string>();
+    if (allUserIds.length > 0) {
+      const { data: users } = await supabase
+        .from('users')
+        .select('id, first_name, last_name')
+        .in('id', allUserIds);
+      (users ?? []).forEach(u => userMap.set(u.id, `${u.first_name} ${u.last_name}`));
+    }
+
+    let enriched = (logs ?? []).map(l => ({
+      ...l,
+      causer_name: l.causer_id ? userMap.get(l.causer_id) : undefined,
+      subject_name: l.subject_id && l.subject_type === 'App\\Models\\User' ? userMap.get(l.subject_id) : undefined,
+    }));
+
+    // Client-side search filter
+    if (params?.search) {
+      const s = params.search.toLowerCase();
+      enriched = enriched.filter(l =>
+        l.description?.toLowerCase().includes(s) ||
+        l.event?.toLowerCase().includes(s) ||
+        l.causer_name?.toLowerCase().includes(s) ||
+        l.subject_name?.toLowerCase().includes(s)
+      );
+    }
+
+    return { data: enriched, total: count ?? 0 };
+  } catch (e) {
+    handleError(e, 'Failed to fetch activity feed');
+  }
+}
+
 // ─── Students / Users ────────────────────────────────────────────────────────
 
 export interface UserWithDetails extends DbUser {
@@ -589,6 +657,42 @@ export async function deactivateStudent(studentId: number): Promise<void> {
   }
 }
 
+export async function bulkActivateStudents(studentIds: number[]): Promise<{ succeeded: number; failed: number }> {
+  assertConfigured();
+  let succeeded = 0;
+  let failed = 0;
+  for (const id of studentIds) {
+    try {
+      await Promise.all([
+        supabase.from('users').update({ is_active: 1 }).eq('id', id),
+        supabase.from('user_details').update({ status: 'ACTIVE' }).eq('user_id', id),
+      ]);
+      succeeded++;
+    } catch {
+      failed++;
+    }
+  }
+  return { succeeded, failed };
+}
+
+export async function bulkDeactivateStudents(studentIds: number[]): Promise<{ succeeded: number; failed: number }> {
+  assertConfigured();
+  let succeeded = 0;
+  let failed = 0;
+  for (const id of studentIds) {
+    try {
+      await Promise.all([
+        supabase.from('users').update({ is_active: 0 }).eq('id', id),
+        supabase.from('user_details').update({ status: 'INACTIVE' }).eq('user_id', id),
+      ]);
+      succeeded++;
+    } catch {
+      failed++;
+    }
+  }
+  return { succeeded, failed };
+}
+
 export async function fetchStudentActivities(studentId: number, limit = 50): Promise<DbActivityLog[]> {
   assertConfigured();
   try {
@@ -617,6 +721,21 @@ export async function fetchAllCompanies(): Promise<{ id: number; name: string }[
     return data ?? [];
   } catch (e) {
     handleError(e, 'Failed to fetch companies list');
+  }
+}
+
+export async function fetchStudentIdsByCompany(companyId: number): Promise<number[]> {
+  assertConfigured();
+  try {
+    const { data, error } = await supabase
+      .from('user_has_attachables')
+      .select('user_id')
+      .eq('attachable_type', 'App\\Models\\Company')
+      .eq('attachable_id', companyId);
+    if (error) throw error;
+    return (data ?? []).map(r => r.user_id);
+  } catch (e) {
+    handleError(e, 'Failed to fetch students by company');
   }
 }
 
@@ -2071,6 +2190,7 @@ export interface EnrolmentWithDetails extends DbStudentCourseEnrolment {
 export async function fetchEnrolments(params?: {
   search?: string;
   status?: string;
+  courseId?: number;
   limit?: number;
   offset?: number;
 }): Promise<{ data: EnrolmentWithDetails[]; total: number }> {
@@ -2082,6 +2202,9 @@ export async function fetchEnrolments(params?: {
 
     if (params?.status && params.status !== 'all') {
       query = query.eq('status', params.status);
+    }
+    if (params?.courseId) {
+      query = query.eq('course_id', params.courseId);
     }
 
     query = query
@@ -2176,6 +2299,64 @@ export async function createEnrolment(data: {
   } catch (e) {
     handleError(e, 'Failed to create enrolment');
   }
+}
+
+export async function bulkCreateEnrolments(params: {
+  student_ids: number[];
+  course_id: number;
+  course_start_at?: string;
+  course_ends_at?: string;
+}): Promise<{ succeeded: number; failed: number; skipped: number }> {
+  assertConfigured();
+  let succeeded = 0;
+  let failed = 0;
+  let skipped = 0;
+
+  // Check existing enrolments to avoid duplicates
+  const { data: existing } = await supabase
+    .from('student_course_enrolments')
+    .select('user_id')
+    .eq('course_id', params.course_id)
+    .in('user_id', params.student_ids);
+  const existingSet = new Set((existing ?? []).map(e => e.user_id));
+
+  const now = new Date().toISOString();
+  for (const userId of params.student_ids) {
+    if (existingSet.has(userId)) {
+      skipped++;
+      continue;
+    }
+    try {
+      const { error } = await supabase
+        .from('student_course_enrolments')
+        .insert({
+          user_id: userId,
+          course_id: params.course_id,
+          status: 'ACTIVE',
+          is_main_course: 1,
+          is_locked: 0,
+          is_semester_2: 0,
+          allowed_to_next_course: 0,
+          course_start_at: params.course_start_at || now,
+          course_ends_at: params.course_ends_at || null,
+          version: 1,
+          deferred: 0,
+          cert_issued: 0,
+          is_chargeable: 1,
+          registered_on_create: 1,
+          show_on_widget: 1,
+          show_registration_date: 1,
+          registration_date: now,
+          created_at: now,
+          updated_at: now,
+        });
+      if (error) throw error;
+      succeeded++;
+    } catch {
+      failed++;
+    }
+  }
+  return { succeeded, failed, skipped };
 }
 
 // ─── Companies ───────────────────────────────────────────────────────────────
@@ -3816,6 +3997,68 @@ export async function fetchCourseProgressSummary(): Promise<CourseProgressSummar
   }
 }
 
+export interface ProgressComparisonRow {
+  student_id: number;
+  student_name: string;
+  status: string;
+  progress_percentage: number;
+  quizzes_total: number;
+  quizzes_passed: number;
+  course_start_at: string | null;
+}
+
+export async function fetchProgressComparison(courseId: number): Promise<ProgressComparisonRow[]> {
+  assertConfigured();
+  try {
+    // Get enrolments for this course
+    const { data: enrolments, error: eErr } = await supabase
+      .from('student_course_enrolments')
+      .select('user_id, status, course_start_at, course_progress_id')
+      .eq('course_id', courseId);
+    if (eErr) throw eErr;
+    if (!enrolments || enrolments.length === 0) return [];
+
+    const studentIds = enrolments.map(e => e.user_id);
+
+    // Parallel fetch: users, quizzes, attempts, progress
+    const [{ data: users }, { data: quizzes }, { data: attempts }, { data: progress }] = await Promise.all([
+      supabase.from('users').select('id, first_name, last_name').in('id', studentIds),
+      supabase.from('quizzes').select('id').eq('course_id', courseId),
+      supabase.from('quiz_attempts').select('user_id, quiz_id, system_result')
+        .eq('course_id', courseId).in('user_id', studentIds),
+      supabase.from('course_progress').select('user_id, percentage')
+        .eq('course_id', courseId).in('user_id', studentIds),
+    ]);
+
+    const userMap = new Map((users ?? []).map(u => [u.id, `${u.first_name} ${u.last_name}`]));
+    const totalQuizzes = (quizzes ?? []).length;
+
+    // Count passed quizzes per student (distinct quiz_id with SATISFACTORY)
+    const passedByStudent = new Map<number, Set<number>>();
+    (attempts ?? []).forEach(a => {
+      if (a.system_result === 'SATISFACTORY') {
+        if (!passedByStudent.has(a.user_id)) passedByStudent.set(a.user_id, new Set());
+        passedByStudent.get(a.user_id)!.add(a.quiz_id);
+      }
+    });
+
+    const progressMap = new Map<number, number>();
+    (progress ?? []).forEach(p => progressMap.set(p.user_id, parseFloat(p.percentage) || 0));
+
+    return enrolments.map(e => ({
+      student_id: e.user_id,
+      student_name: userMap.get(e.user_id) ?? 'Unknown',
+      status: e.status,
+      progress_percentage: Math.round(progressMap.get(e.user_id) ?? 0),
+      quizzes_total: totalQuizzes,
+      quizzes_passed: passedByStudent.get(e.user_id)?.size ?? 0,
+      course_start_at: e.course_start_at,
+    })).sort((a, b) => b.progress_percentage - a.progress_percentage);
+  } catch (e) {
+    handleError(e, 'Failed to fetch progress comparison');
+  }
+}
+
 // ─── Student-Facing LMS ────────────────────────────────────────────────────
 
 export interface StudentEnrolledCourse {
@@ -5222,6 +5465,72 @@ export async function markLessonCompetent(
     if (error) throw error;
   } catch (e) {
     handleError(e, 'Failed to mark lesson competent');
+  }
+}
+
+export interface CompetencyMatrixRow {
+  student_id: number;
+  student_name: string;
+  lessons: { lesson_id: number; is_competent: boolean; competent_on: string | null }[];
+}
+
+export interface CompetencyMatrixData {
+  lessons: { id: number; title: string; order: number }[];
+  students: CompetencyMatrixRow[];
+}
+
+export async function fetchCompetencyMatrix(courseId: number): Promise<CompetencyMatrixData> {
+  assertConfigured();
+  try {
+    // 1. Get lessons for this course
+    const { data: lessons, error: lErr } = await supabase
+      .from('lessons')
+      .select('id, title, "order"')
+      .eq('course_id', courseId)
+      .order('order');
+    if (lErr) throw lErr;
+
+    // 2. Get all students enrolled in this course
+    const { data: enrolments, error: eErr } = await supabase
+      .from('student_course_enrolments')
+      .select('user_id')
+      .eq('course_id', courseId);
+    if (eErr) throw eErr;
+
+    const studentIds = Array.from(new Set((enrolments ?? []).map(e => e.user_id)));
+    if (studentIds.length === 0 || !lessons || lessons.length === 0) {
+      return { lessons: lessons ?? [], students: [] };
+    }
+
+    // 3. Fetch student names + competencies in parallel
+    const [{ data: users }, { data: comps }] = await Promise.all([
+      supabase.from('users').select('id, first_name, last_name').in('id', studentIds),
+      supabase.from('competencies').select('user_id, lesson_id, is_competent, competent_on')
+        .eq('course_id', courseId).in('user_id', studentIds),
+    ]);
+
+    const userMap = new Map((users ?? []).map(u => [u.id, `${u.first_name} ${u.last_name}`]));
+    const compMap = new Map<string, { is_competent: boolean; competent_on: string | null }>();
+    (comps ?? []).forEach(c => {
+      compMap.set(`${c.user_id}_${c.lesson_id}`, { is_competent: c.is_competent === 1, competent_on: c.competent_on });
+    });
+
+    const lessonList = (lessons ?? []).map(l => ({ id: l.id, title: l.title, order: l.order }));
+
+    const students: CompetencyMatrixRow[] = studentIds
+      .map(sid => ({
+        student_id: sid,
+        student_name: userMap.get(sid) ?? 'Unknown',
+        lessons: lessonList.map(l => {
+          const c = compMap.get(`${sid}_${l.id}`);
+          return { lesson_id: l.id, is_competent: c?.is_competent ?? false, competent_on: c?.competent_on ?? null };
+        }),
+      }))
+      .sort((a, b) => a.student_name.localeCompare(b.student_name));
+
+    return { lessons: lessonList, students };
+  } catch (e) {
+    handleError(e, 'Failed to fetch competency matrix');
   }
 }
 

@@ -36,8 +36,9 @@ import {
   ArrowLeft, Edit, UserCheck, UserX, Mail, Phone, MapPin,
   Building2, GraduationCap, BookOpen, Clock, Calendar, User,
   Shield, Activity, Loader2, FileText, StickyNote, Pin,
-  Trash2, Send, Upload, Download, Archive, Plus, Pencil, X, Check,
+  Trash2, Send, Upload, Download, Archive, Plus, Pencil, X, Check, Eye,
 } from 'lucide-react';
+import { useNavigate } from 'react-router-dom';
 import { toast } from 'sonner';
 
 interface StudentDetailProps {
@@ -47,7 +48,8 @@ interface StudentDetailProps {
 }
 
 export function StudentDetail({ studentId, onBack, onEdit }: StudentDetailProps) {
-  const { user: authUser } = useAuth();
+  const { user: authUser, impersonate, realUser } = useAuth();
+  const navigate = useNavigate();
   const [student, setStudent] = useState<StudentFullDetailType | null>(null);
   const [activities, setActivities] = useState<DbActivityLog[]>([]);
   const [documents, setDocuments] = useState<StudentDocument[]>([]);
@@ -333,6 +335,25 @@ export function StudentDetail({ studentId, onBack, onEdit }: StudentDetailProps)
           <Button variant="outline" size="sm" className="text-[#64748b]" onClick={handleArchiveStudent} disabled={archiving || student.is_archived === 1}>
             <Archive className="w-4 h-4 mr-1.5" /> {student.is_archived === 1 ? 'Archived' : 'Archive'}
           </Button>
+          {realUser && ['Admin', 'Root'].includes(realUser.role) && student.role_name === 'Student' && (
+            <Button
+              variant="outline"
+              size="sm"
+              className="text-amber-600 border-amber-200 hover:bg-amber-50"
+              onClick={() => {
+                impersonate({
+                  id: student.id,
+                  name: `${student.first_name} ${student.last_name}`,
+                  email: student.email,
+                  role: 'Student',
+                  permissions: [],
+                });
+                navigate('/my-courses');
+              }}
+            >
+              <Eye className="w-4 h-4 mr-1.5" /> Impersonate
+            </Button>
+          )}
           <Button size="sm" className="bg-[#3b82f6] hover:bg-[#2563eb] text-white" onClick={() => onEdit(student.id)}>
             <Edit className="w-4 h-4 mr-1.5" /> Edit
           </Button>

@@ -2,7 +2,7 @@
  * Students Page — Student management with real Supabase data.
  * NytroAI design: clean white cards, blue accents, sortable table.
  */
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useEffect } from 'react';
 import { DashboardLayout } from '../components/DashboardLayout';
 import { DataTable } from '../components/DataTable';
 import { StatusBadge } from '../components/StatusBadge';
@@ -10,10 +10,10 @@ import { StudentDetail } from '../components/StudentDetail';
 import { AddStudentDialog } from '../components/AddStudentDialog';
 import { EditStudentDialog } from '../components/EditStudentDialog';
 import { useSupabaseQuery } from '@/hooks/useSupabaseQuery';
-import { fetchStudents, type UserWithDetails } from '@/lib/api';
+import { fetchStudents, bulkActivateStudents, bulkDeactivateStudents, fetchAllCompanies, fetchStudentIdsByCompany, type UserWithDetails } from '@/lib/api';
 import { Button } from '@/components/ui/button';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { Plus, Download, Eye } from 'lucide-react';
+import { Plus, Download, Eye, UserCheck, UserX, Loader2 } from 'lucide-react';
 import { toast } from 'sonner';
 import { exportToCSV } from '@/lib/utils';
 
@@ -24,6 +24,22 @@ export default function Students() {
   const [selectedStudentId, setSelectedStudentId] = useState<number | null>(null);
   const [addDialogOpen, setAddDialogOpen] = useState(false);
   const [editStudentId, setEditStudentId] = useState<number | null>(null);
+  const [bulkLoading, setBulkLoading] = useState(false);
+  const [companyFilter, setCompanyFilter] = useState('all');
+  const [companies, setCompanies] = useState<{ id: number; name: string }[]>([]);
+  const [companyStudentIds, setCompanyStudentIds] = useState<Set<number> | null>(null);
+
+  useEffect(() => {
+    fetchAllCompanies().then(c => setCompanies(c ?? []));
+  }, []);
+
+  useEffect(() => {
+    if (companyFilter === 'all') {
+      setCompanyStudentIds(null);
+    } else {
+      fetchStudentIdsByCompany(parseInt(companyFilter, 10)).then((ids: number[]) => setCompanyStudentIds(new Set(ids)));
+    }
+  }, [companyFilter]);
 
   const { data, loading, error, refetch } = useSupabaseQuery(
     () => fetchStudents({ search, status: statusFilter, limit: 200 }),
@@ -32,9 +48,15 @@ export default function Students() {
 
   const filteredData = useMemo(() => {
     if (!data?.data) return [];
-    if (roleFilter === 'all') return data.data;
-    return data.data.filter(u => u.role_name === roleFilter);
-  }, [data, roleFilter]);
+    let result = data.data;
+    if (roleFilter !== 'all') {
+      result = result.filter(u => u.role_name === roleFilter);
+    }
+    if (companyStudentIds !== null) {
+      result = result.filter(u => companyStudentIds.has(u.id));
+    }
+    return result;
+  }, [data, roleFilter, companyStudentIds]);
 
   // If a student is selected, show the detail view
   if (selectedStudentId !== null) {
@@ -165,6 +187,17 @@ export default function Students() {
                   <SelectItem value="Root">Root</SelectItem>
                 </SelectContent>
               </Select>
+              <Select value={companyFilter} onValueChange={setCompanyFilter}>
+                <SelectTrigger className="w-[160px] h-9 border-slate-200 bg-white/60">
+                  <SelectValue placeholder="Company" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">All Companies</SelectItem>
+                  {companies.map(c => (
+                    <SelectItem key={c.id} value={String(c.id)}>{c.name}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
             </div>
           }
           headerActions={
@@ -208,6 +241,50 @@ export default function Students() {
               </Button>
             </div>
           }
+          selectable
+          bulkActions={(selectedIds, clearSelection) => (
+            <>
+              <Button
+                size="sm"
+                variant="outline"
+                className="h-7 text-xs border-emerald-200 text-emerald-700 hover:bg-emerald-50"
+                disabled={bulkLoading}
+                onClick={async () => {
+                  setBulkLoading(true);
+                  try {
+                    const result = await bulkActivateStudents(selectedIds as number[]);
+                    toast.success(`${result.succeeded} student(s) activated${result.failed ? `, ${result.failed} failed` : ''}`);
+                    clearSelection();
+                    refetch();
+                  } catch { toast.error('Bulk activate failed'); }
+                  finally { setBulkLoading(false); }
+                }}
+              >
+                {bulkLoading ? <Loader2 className="w-3 h-3 mr-1 animate-spin" /> : <UserCheck className="w-3 h-3 mr-1" />}
+                Activate
+              </Button>
+              <Button
+                size="sm"
+                variant="outline"
+                className="h-7 text-xs border-red-200 text-red-700 hover:bg-red-50"
+                disabled={bulkLoading}
+                onClick={async () => {
+                  if (!confirm(`Deactivate ${selectedIds.length} student(s)?`)) return;
+                  setBulkLoading(true);
+                  try {
+                    const result = await bulkDeactivateStudents(selectedIds as number[]);
+                    toast.success(`${result.succeeded} student(s) deactivated${result.failed ? `, ${result.failed} failed` : ''}`);
+                    clearSelection();
+                    refetch();
+                  } catch { toast.error('Bulk deactivate failed'); }
+                  finally { setBulkLoading(false); }
+                }}
+              >
+                {bulkLoading ? <Loader2 className="w-3 h-3 mr-1 animate-spin" /> : <UserX className="w-3 h-3 mr-1" />}
+                Deactivate
+              </Button>
+            </>
+          )}
           actions={(row: UserWithDetails) => (
             <Button variant="ghost" size="sm" className="text-[#64748b] hover:text-[#3b82f6]" onClick={() => setSelectedStudentId(row.id)}>
               <Eye className="w-4 h-4" />

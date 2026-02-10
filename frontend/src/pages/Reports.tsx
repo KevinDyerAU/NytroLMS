@@ -22,6 +22,8 @@ import { exportToCSV, exportToPDF } from '@/lib/utils';
 import { useSupabaseQuery } from '@/hooks/useSupabaseQuery';
 import { fetchAdminReports, fetchAdminReportsForExport, fetchCourseProgressSummary, CourseProgressSummary } from '@/lib/api';
 import type { DbAdminReport } from '@/lib/types';
+import { CompetencyMatrix } from '@/components/CompetencyMatrix';
+import { ProgressComparison } from '@/components/ProgressComparison';
 
 const reportCategories = [
   {
@@ -127,6 +129,8 @@ export default function Reports() {
             <TabsTrigger value="templates">Report Templates</TabsTrigger>
             <TabsTrigger value="admin">Admin Reports</TabsTrigger>
             <TabsTrigger value="progress">Course Progress</TabsTrigger>
+            <TabsTrigger value="competency">Competency Matrix</TabsTrigger>
+            <TabsTrigger value="comparison">Progress Comparison</TabsTrigger>
           </TabsList>
 
           {/* Report Templates Tab */}
@@ -323,6 +327,16 @@ export default function Reports() {
                 ))}
               </div>
             )}
+          </TabsContent>
+
+          {/* Competency Matrix Tab */}
+          <TabsContent value="competency" className="mt-4">
+            <CompetencyMatrix />
+          </TabsContent>
+
+          {/* Progress Comparison Tab */}
+          <TabsContent value="comparison" className="mt-4">
+            <ProgressComparison />
           </TabsContent>
         </Tabs>
       </div>

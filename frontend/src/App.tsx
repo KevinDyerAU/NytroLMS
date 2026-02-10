@@ -12,6 +12,7 @@ import ErrorBoundary from "./components/ErrorBoundary";
 import { ThemeProvider } from "./contexts/ThemeContext";
 import { AuthProvider, useAuth } from "./contexts/AuthContext";
 import { ProtectedRoute } from "./components/ProtectedRoute";
+import { ImpersonationBanner } from "./components/ImpersonationBanner";
 
 // Lazy-loaded pages for code splitting
 const Landing = lazy(() => import("./pages/Landing"));
@@ -127,6 +128,7 @@ function App() {
           <AuthProvider>
             <TooltipProvider>
               <Toaster />
+              <ImpersonationBanner />
               <AppRoutes />
             </TooltipProvider>
           </AuthProvider>

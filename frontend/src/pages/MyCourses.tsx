@@ -22,9 +22,9 @@ import { StatusBadge } from '@/components/StatusBadge';
 import {
   BookOpen, ChevronDown, ChevronRight, GraduationCap,
   Loader2, CheckCircle2, Clock, FileText, ClipboardCheck,
-  ArrowLeft, AlertCircle, Play, Eye,
+  ArrowLeft, AlertCircle, Play, Eye, Award,
 } from 'lucide-react';
-import { cn } from '@/lib/utils';
+import { cn, generateCertificate } from '@/lib/utils';
 
 function QuizStatusIcon({ status }: { status: string | null }) {
   if (!status) return <div className="w-2 h-2 rounded-full bg-[#cbd5e1]" />;
@@ -41,6 +41,7 @@ function CourseDetailView({ course, userId, onBack }: {
   userId: number;
   onBack: () => void;
 }) {
+  const { user } = useAuth();
   const { data: lessons, loading, refetch } = useSupabaseQuery(
     () => fetchCourseLessonsForStudent(course.course_id, userId),
     [course.course_id, userId]
@@ -126,7 +127,28 @@ function CourseDetailView({ course, userId, onBack }: {
               <p className="text-sm text-[#64748b] mt-1">{course.course_code}</p>
             )}
           </div>
-          <StatusBadge status={course.status === 'COMPLETED' ? 'completed' : 'active'} />
+          <div className="flex items-center gap-2">
+            {course.status === 'COMPLETED' && course.course_completed_at && (
+              <Button
+                size="sm"
+                variant="outline"
+                className="border-emerald-200 text-emerald-600 hover:bg-emerald-50"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  generateCertificate({
+                    studentName: user?.name ?? 'Student',
+                    courseName: course.course_title,
+                    courseCode: course.course_code,
+                    completionDate: course.course_completed_at!,
+                    certificateId: `CERT-${course.enrolment_id}`,
+                  });
+                }}
+              >
+                <Award className="w-4 h-4 mr-1" /> Certificate
+              </Button>
+            )}
+            <StatusBadge status={course.status === 'COMPLETED' ? 'completed' : 'active'} />
+          </div>
         </div>
         <div className="mt-4">
           <div className="flex items-center justify-between mb-2">
@@ -342,6 +364,11 @@ export default function MyCourses() {
                       )}
                     </div>
                   </div>
+                  {course.status === 'COMPLETED' && (
+                    <span title="Course Completed — Certificate Available">
+                      <Award className="w-5 h-5 text-emerald-500 flex-shrink-0" />
+                    </span>
+                  )}
                 </div>
 
                 <div className="space-y-2">
@@ -354,10 +381,31 @@ export default function MyCourses() {
                   <Progress value={course.progress_percentage} className="h-1.5" />
                 </div>
 
-                <div className="flex items-center gap-3 mt-3 text-[10px] text-[#94a3b8]">
-                  <span>{course.lesson_count} lessons</span>
-                  <span>{course.topic_count} topics</span>
-                  <StatusBadge status={course.status === 'COMPLETED' ? 'completed' : 'active'} />
+                <div className="flex items-center justify-between mt-3">
+                  <div className="flex items-center gap-3 text-[10px] text-[#94a3b8]">
+                    <span>{course.lesson_count} lessons</span>
+                    <span>{course.topic_count} topics</span>
+                    <StatusBadge status={course.status === 'COMPLETED' ? 'completed' : 'active'} />
+                  </div>
+                  {course.status === 'COMPLETED' && course.course_completed_at && (
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      className="h-6 text-[10px] px-2 border-emerald-200 text-emerald-600 hover:bg-emerald-50"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        generateCertificate({
+                          studentName: user?.name ?? 'Student',
+                          courseName: course.course_title,
+                          courseCode: course.course_code,
+                          completionDate: course.course_completed_at!,
+                          certificateId: `CERT-${course.enrolment_id}`,
+                        });
+                      }}
+                    >
+                      <Award className="w-3 h-3 mr-1" /> Certificate
+                    </Button>
+                  )}
                 </div>
               </Card>
             ))}
