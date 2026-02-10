@@ -15,14 +15,14 @@ interface DashboardLayoutProps {
 }
 
 export function DashboardLayout({ children, title, subtitle }: DashboardLayoutProps) {
-  const { user } = useAuth();
+  const { user, isImpersonating } = useAuth();
 
   return (
     <div className="flex min-h-screen bg-[#f8f9fb]">
       <Sidebar />
       <div className="flex-1 flex flex-col min-w-0">
         {/* Top bar */}
-        <header className="sticky top-0 z-30 bg-white/80 backdrop-blur-md border-b border-[#e2e8f0]">
+        <header className={`sticky z-30 bg-white/80 backdrop-blur-md border-b border-[#e2e8f0] ${isImpersonating ? 'top-[42px]' : 'top-0'}`}>
           <div className="flex items-center justify-between px-4 lg:px-8 py-3">
             <div className="pl-12 lg:pl-0">
               {title && (

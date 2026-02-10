@@ -13,7 +13,7 @@ import {
 } from '@/lib/api';
 import { exportToCSV } from '@/lib/utils';
 import {
-  Loader2, CheckCircle2, Circle, Search, Download, Grid3X3,
+  Loader2, CheckCircle2, Circle, Search, Download, Grid3X3, AlertCircle, RefreshCw, Users,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { toast } from 'sonner';
@@ -23,22 +23,32 @@ export function CompetencyMatrix() {
   const [selectedCourseId, setSelectedCourseId] = useState<string>('');
   const [matrixData, setMatrixData] = useState<CompetencyMatrixData | null>(null);
   const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
   const [search, setSearch] = useState('');
 
   useEffect(() => {
     fetchAvailableCourses().then(c => setCourses((c ?? []).map(x => ({ id: x.id, title: x.title }))));
   }, []);
 
+  const loadMatrix = (courseId: string) => {
+    setLoading(true);
+    setError(null);
+    fetchCompetencyMatrix(parseInt(courseId, 10))
+      .then(data => setMatrixData(data))
+      .catch((e) => {
+        setMatrixData(null);
+        setError(e?.message ?? 'Failed to load competency data. Please try again.');
+      })
+      .finally(() => setLoading(false));
+  };
+
   useEffect(() => {
     if (!selectedCourseId) {
       setMatrixData(null);
+      setError(null);
       return;
     }
-    setLoading(true);
-    fetchCompetencyMatrix(parseInt(selectedCourseId, 10))
-      .then(data => setMatrixData(data))
-      .catch(() => setMatrixData(null))
-      .finally(() => setLoading(false));
+    loadMatrix(selectedCourseId);
   }, [selectedCourseId]);
 
   const filteredStudents = matrixData?.students.filter(s =>
@@ -69,7 +79,7 @@ export function CompetencyMatrix() {
   };
 
   return (
-    <Card className="border-[#e2e8f0]/50">
+    <Card className="border-[#e2e8f0] shadow-card">
       <CardHeader>
         <div className="flex items-center justify-between gap-3 flex-wrap">
           <CardTitle className="text-base text-[#3b82f6] flex items-center gap-2">
@@ -109,36 +119,58 @@ export function CompetencyMatrix() {
       <CardContent>
         {!selectedCourseId ? (
           <div className="py-12 text-center">
-            <Grid3X3 className="mx-auto mb-3 h-10 w-10 text-[#94a3b8]" />
-            <p className="text-sm text-[#64748b]">Select a course to view the competency matrix.</p>
+            <div className="inline-flex p-3 bg-[#f1f5f9] rounded-xl mb-4">
+              <Grid3X3 className="h-8 w-8 text-[#94a3b8]" />
+            </div>
+            <h3 className="text-base font-semibold text-[#1e293b]">Select a Course</h3>
+            <p className="mt-1 text-sm text-[#64748b] max-w-xs mx-auto">Choose a course above to view the student competency matrix.</p>
           </div>
         ) : loading ? (
           <div className="py-12 text-center">
-            <Loader2 className="mx-auto h-6 w-6 animate-spin text-[#3b82f6]" />
-            <p className="mt-2 text-sm text-[#64748b]">Loading matrix...</p>
+            <Loader2 className="mx-auto h-7 w-7 animate-spin text-[#3b82f6]" />
+            <p className="mt-3 text-sm text-[#64748b]">Loading competency data...</p>
+          </div>
+        ) : error ? (
+          <div className="py-8">
+            <div className="flex items-center gap-3 p-4 bg-red-50/80 border border-red-200 rounded-lg">
+              <div className="p-2 bg-red-100 rounded-lg">
+                <AlertCircle className="w-5 h-5 text-red-600" />
+              </div>
+              <div className="flex-1">
+                <p className="text-sm font-semibold text-red-800">Failed to load competency matrix</p>
+                <p className="text-xs text-red-600 mt-0.5">{error}</p>
+              </div>
+              <Button variant="outline" size="sm" className="border-red-200 text-red-700 hover:bg-red-100" onClick={() => loadMatrix(selectedCourseId)}>
+                <RefreshCw className="w-3.5 h-3.5 mr-1" /> Retry
+              </Button>
+            </div>
           </div>
         ) : !matrixData || matrixData.students.length === 0 ? (
           <div className="py-12 text-center">
-            <p className="text-sm text-[#94a3b8]">No students enrolled in this course.</p>
+            <div className="inline-flex p-3 bg-[#f1f5f9] rounded-xl mb-4">
+              <Users className="h-8 w-8 text-[#94a3b8]" />
+            </div>
+            <h3 className="text-base font-semibold text-[#1e293b]">No Students Enrolled</h3>
+            <p className="mt-1 text-sm text-[#64748b]">No students are currently enrolled in this course.</p>
           </div>
         ) : (
           <div className="overflow-x-auto -mx-6">
             <table className="w-full text-xs border-collapse min-w-[600px]">
               <thead>
                 <tr className="bg-[#f8fafc]">
-                  <th className="sticky left-0 bg-[#f8fafc] z-10 px-4 py-2.5 text-left font-semibold text-[#64748b] border-b border-r border-[#e2e8f0] min-w-[180px]">
+                  <th className="sticky left-0 bg-[#f8fafc] z-10 px-4 py-2.5 text-left text-[10px] font-semibold text-[#64748b] uppercase tracking-wider border-b border-r border-[#e2e8f0] min-w-[180px]">
                     Student
                   </th>
                   {matrixData.lessons.map(l => (
                     <th
                       key={l.id}
-                      className="px-2 py-2.5 text-center font-semibold text-[#64748b] border-b border-[#e2e8f0] min-w-[60px]"
+                      className="px-2 py-2.5 text-center text-[10px] font-semibold text-[#64748b] uppercase tracking-wider border-b border-[#e2e8f0] min-w-[60px]"
                       title={l.title}
                     >
                       <span className="block truncate max-w-[80px]">U{l.order}</span>
                     </th>
                   ))}
-                  <th className="px-3 py-2.5 text-center font-semibold text-[#64748b] border-b border-l border-[#e2e8f0] min-w-[60px]">
+                  <th className="px-3 py-2.5 text-center text-[10px] font-semibold text-[#64748b] uppercase tracking-wider border-b border-l border-[#e2e8f0] min-w-[60px]">
                     Total
                   </th>
                 </tr>
@@ -186,7 +218,7 @@ export function CompetencyMatrix() {
             </table>
 
             {/* Legend */}
-            <div className="flex items-center gap-4 px-4 pt-3 pb-1 text-xs text-[#94a3b8]">
+            <div className="flex items-center gap-4 px-6 pt-4 pb-2 text-xs text-[#94a3b8] border-t border-[#f1f5f9]">
               <span className="flex items-center gap-1">
                 <CheckCircle2 className="w-3.5 h-3.5 text-emerald-500" /> Competent
               </span>

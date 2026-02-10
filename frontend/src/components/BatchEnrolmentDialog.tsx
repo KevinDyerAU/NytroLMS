@@ -4,7 +4,7 @@
  */
 import { useState, useEffect, useMemo } from 'react';
 import {
-  Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter,
+  Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter,
 } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -16,7 +16,8 @@ import {
   fetchAvailableCourses, fetchStudents, bulkCreateEnrolments,
   type UserWithDetails,
 } from '@/lib/api';
-import { Search, Loader2, Users, GraduationCap } from 'lucide-react';
+import { Search, Loader2, Users, GraduationCap, AlertCircle } from 'lucide-react';
+import { cn } from '@/lib/utils';
 import { toast } from 'sonner';
 
 interface BatchEnrolmentDialogProps {
@@ -34,17 +35,21 @@ export function BatchEnrolmentDialog({ open, onOpenChange, onSaved }: BatchEnrol
   const [courseStartAt, setCourseStartAt] = useState('');
   const [courseEndsAt, setCourseEndsAt] = useState('');
   const [loading, setLoading] = useState(false);
+  const [loadError, setLoadError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
 
   useEffect(() => {
     if (!open) return;
     setLoading(true);
+    setLoadError(null);
     Promise.all([
       fetchAvailableCourses(),
       fetchStudents({ status: 'active', limit: 500 }),
     ]).then(([c, s]) => {
       setCourses((c ?? []).map(x => ({ id: x.id, title: x.title })));
       setStudents(s?.data ?? []);
+    }).catch(() => {
+      setLoadError('Failed to load courses or students. Please close and try again.');
     }).finally(() => setLoading(false));
   }, [open]);
 
@@ -112,22 +117,39 @@ export function BatchEnrolmentDialog({ open, onOpenChange, onSaved }: BatchEnrol
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="max-w-lg">
         <DialogHeader>
-          <DialogTitle className="flex items-center gap-2">
-            <Users className="w-5 h-5 text-[#3b82f6]" />
+          <DialogTitle className="flex items-center gap-2 text-[#1e293b]">
+            <div className="p-1.5 bg-[#eff6ff] rounded-lg">
+              <Users className="w-4 h-4 text-[#3b82f6]" />
+            </div>
             Batch Enrolment
           </DialogTitle>
+          <DialogDescription className="text-[#64748b]">
+            Select a course and choose multiple students to enrol at once.
+          </DialogDescription>
         </DialogHeader>
 
         {loading ? (
           <div className="py-12 text-center">
-            <Loader2 className="mx-auto h-6 w-6 animate-spin text-[#3b82f6]" />
-            <p className="mt-2 text-sm text-[#64748b]">Loading...</p>
+            <Loader2 className="mx-auto h-7 w-7 animate-spin text-[#3b82f6]" />
+            <p className="mt-3 text-sm text-[#64748b]">Loading courses and students...</p>
+          </div>
+        ) : loadError ? (
+          <div className="py-6">
+            <div className="flex items-center gap-3 p-4 bg-red-50/80 border border-red-200 rounded-lg">
+              <div className="p-2 bg-red-100 rounded-lg">
+                <AlertCircle className="w-5 h-5 text-red-600" />
+              </div>
+              <div className="flex-1">
+                <p className="text-sm font-semibold text-red-800">Loading failed</p>
+                <p className="text-xs text-red-600 mt-0.5">{loadError}</p>
+              </div>
+            </div>
           </div>
         ) : (
           <div className="space-y-4">
             {/* Course Selection */}
             <div className="space-y-1.5">
-              <Label className="text-sm font-medium">Course</Label>
+              <Label className="text-sm font-medium text-[#1e293b]">Course <span className="text-red-400">*</span></Label>
               <Select value={selectedCourseId} onValueChange={setSelectedCourseId}>
                 <SelectTrigger className="border-[#e2e8f0]">
                   <SelectValue placeholder="Select a course..." />
@@ -171,11 +193,11 @@ export function BatchEnrolmentDialog({ open, onOpenChange, onSaved }: BatchEnrol
                 <Label className="text-sm font-medium">
                   Students ({selectedStudentIds.size} selected)
                 </Label>
-                <div className="flex gap-2">
-                  <Button variant="ghost" size="sm" className="h-6 text-[10px] text-[#3b82f6]" onClick={selectAll}>
+                <div className="flex gap-1">
+                  <Button variant="ghost" size="sm" className="h-6 px-2 text-xs text-[#3b82f6] hover:bg-blue-50" onClick={selectAll}>
                     Select All
                   </Button>
-                  <Button variant="ghost" size="sm" className="h-6 text-[10px] text-[#64748b]" onClick={clearAll}>
+                  <Button variant="ghost" size="sm" className="h-6 px-2 text-xs text-[#64748b] hover:bg-[#f1f5f9]" onClick={clearAll}>
                     Clear
                   </Button>
                 </div>
@@ -197,7 +219,12 @@ export function BatchEnrolmentDialog({ open, onOpenChange, onSaved }: BatchEnrol
                     filteredStudents.map(st => (
                       <label
                         key={st.id}
-                        className="flex items-center gap-2.5 px-2 py-1.5 rounded hover:bg-[#f8fafc] cursor-pointer transition-colors"
+                        className={cn(
+                          "flex items-center gap-2.5 px-2.5 py-2 rounded-md cursor-pointer transition-colors",
+                          selectedStudentIds.has(st.id)
+                            ? 'bg-blue-50/80 border border-blue-200'
+                            : 'hover:bg-[#f8fafc] border border-transparent'
+                        )}
                       >
                         <Checkbox
                           checked={selectedStudentIds.has(st.id)}
@@ -218,8 +245,8 @@ export function BatchEnrolmentDialog({ open, onOpenChange, onSaved }: BatchEnrol
           </div>
         )}
 
-        <DialogFooter>
-          <Button variant="outline" onClick={() => onOpenChange(false)}>Cancel</Button>
+        <DialogFooter className="border-t border-[#e2e8f0] pt-4">
+          <Button variant="outline" className="border-[#e2e8f0] text-[#64748b]" onClick={() => onOpenChange(false)}>Cancel</Button>
           <Button
             className="bg-[#3b82f6] hover:bg-[#2563eb] text-white"
             disabled={!selectedCourseId || selectedStudentIds.size === 0 || submitting}

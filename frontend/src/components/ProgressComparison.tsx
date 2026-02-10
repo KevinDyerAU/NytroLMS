@@ -6,13 +6,14 @@ import { useState, useEffect } from 'react';
 import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Input } from '@/components/ui/input';
+import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import {
   fetchAvailableCourses, fetchProgressComparison,
   type ProgressComparisonRow,
 } from '@/lib/api';
 import {
-  Loader2, BarChart3, Search, Users, TrendingUp,
+  Loader2, BarChart3, Search, Users, TrendingUp, AlertCircle, RefreshCw,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
@@ -35,19 +36,28 @@ export function ProgressComparison() {
   const [selectedCourseId, setSelectedCourseId] = useState('');
   const [data, setData] = useState<ProgressComparisonRow[]>([]);
   const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
   const [search, setSearch] = useState('');
 
   useEffect(() => {
     fetchAvailableCourses().then(c => setCourses((c ?? []).map(x => ({ id: x.id, title: x.title }))));
   }, []);
 
-  useEffect(() => {
-    if (!selectedCourseId) { setData([]); return; }
+  const loadProgress = (courseId: string) => {
     setLoading(true);
-    fetchProgressComparison(parseInt(selectedCourseId, 10))
+    setError(null);
+    fetchProgressComparison(parseInt(courseId, 10))
       .then(d => setData(d ?? []))
-      .catch(() => setData([]))
+      .catch((e) => {
+        setData([]);
+        setError(e?.message ?? 'Failed to load progress data. Please try again.');
+      })
       .finally(() => setLoading(false));
+  };
+
+  useEffect(() => {
+    if (!selectedCourseId) { setData([]); setError(null); return; }
+    loadProgress(selectedCourseId);
   }, [selectedCourseId]);
 
   const filtered = data.filter(s =>
@@ -59,7 +69,7 @@ export function ProgressComparison() {
     : 0;
 
   return (
-    <Card className="border-[#e2e8f0]/50">
+    <Card className="border-[#e2e8f0] shadow-card">
       <CardHeader>
         <div className="flex items-center justify-between gap-3 flex-wrap">
           <CardTitle className="text-base text-[#3b82f6] flex items-center gap-2">
@@ -94,22 +104,44 @@ export function ProgressComparison() {
       <CardContent>
         {!selectedCourseId ? (
           <div className="py-12 text-center">
-            <BarChart3 className="mx-auto mb-3 h-10 w-10 text-[#94a3b8]" />
-            <p className="text-sm text-[#64748b]">Select a course to compare student progress.</p>
+            <div className="inline-flex p-3 bg-[#f1f5f9] rounded-xl mb-4">
+              <BarChart3 className="h-8 w-8 text-[#94a3b8]" />
+            </div>
+            <h3 className="text-base font-semibold text-[#1e293b]">Select a Course</h3>
+            <p className="mt-1 text-sm text-[#64748b] max-w-xs mx-auto">Choose a course above to compare student progress side by side.</p>
           </div>
         ) : loading ? (
           <div className="py-12 text-center">
-            <Loader2 className="mx-auto h-6 w-6 animate-spin text-[#3b82f6]" />
-            <p className="mt-2 text-sm text-[#64748b]">Loading progress data...</p>
+            <Loader2 className="mx-auto h-7 w-7 animate-spin text-[#3b82f6]" />
+            <p className="mt-3 text-sm text-[#64748b]">Loading progress data...</p>
+          </div>
+        ) : error ? (
+          <div className="py-8">
+            <div className="flex items-center gap-3 p-4 bg-red-50/80 border border-red-200 rounded-lg">
+              <div className="p-2 bg-red-100 rounded-lg">
+                <AlertCircle className="w-5 h-5 text-red-600" />
+              </div>
+              <div className="flex-1">
+                <p className="text-sm font-semibold text-red-800">Failed to load progress data</p>
+                <p className="text-xs text-red-600 mt-0.5">{error}</p>
+              </div>
+              <Button variant="outline" size="sm" className="border-red-200 text-red-700 hover:bg-red-100" onClick={() => loadProgress(selectedCourseId)}>
+                <RefreshCw className="w-3.5 h-3.5 mr-1" /> Retry
+              </Button>
+            </div>
           </div>
         ) : data.length === 0 ? (
           <div className="py-12 text-center">
-            <p className="text-sm text-[#94a3b8]">No students enrolled in this course.</p>
+            <div className="inline-flex p-3 bg-[#f1f5f9] rounded-xl mb-4">
+              <Users className="h-8 w-8 text-[#94a3b8]" />
+            </div>
+            <h3 className="text-base font-semibold text-[#1e293b]">No Students Enrolled</h3>
+            <p className="mt-1 text-sm text-[#64748b]">No students are currently enrolled in this course.</p>
           </div>
         ) : (
           <>
             {/* Summary stats */}
-            <div className="flex items-center gap-6 mb-5 pb-4 border-b border-[#f1f5f9]">
+            <div className="flex items-center gap-6 mb-5 pb-4 border-b border-[#e2e8f0]">
               <div className="flex items-center gap-2">
                 <Users className="w-4 h-4 text-[#94a3b8]" />
                 <span className="text-sm text-[#64748b]">{filtered.length} students</span>
@@ -132,7 +164,7 @@ export function ProgressComparison() {
                   ? Math.round((student.quizzes_passed / student.quizzes_total) * 100)
                   : 0;
                 return (
-                  <div key={student.student_id} className="group">
+                  <div key={student.student_id} className="group rounded-lg px-3 py-2 -mx-3 hover:bg-[#f8fafc] transition-colors">
                     <div className="flex items-center gap-3">
                       {/* Name */}
                       <div className="w-40 flex-shrink-0 truncate">
@@ -141,12 +173,12 @@ export function ProgressComparison() {
 
                       {/* Progress bar */}
                       <div className="flex-1 flex items-center gap-2">
-                        <div className="flex-1 h-6 bg-[#f1f5f9] rounded-full overflow-hidden relative">
+                        <div className="flex-1 h-7 bg-[#f1f5f9] rounded-lg overflow-hidden relative border border-[#e2e8f0]">
                           <div
-                            className={cn("h-full rounded-full transition-all duration-700", progressBarColor(student.progress_percentage))}
+                            className={cn("h-full rounded-lg transition-all duration-700", progressBarColor(student.progress_percentage))}
                             style={{ width: `${Math.max(student.progress_percentage, 2)}%` }}
                           />
-                          <span className="absolute inset-0 flex items-center justify-center text-[10px] font-bold text-[#1e293b]">
+                          <span className="absolute inset-0 flex items-center justify-center text-[10px] font-bold text-[#1e293b] drop-shadow-[0_0_2px_rgba(255,255,255,0.8)]">
                             {student.progress_percentage}%
                           </span>
                         </div>

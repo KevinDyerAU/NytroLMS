@@ -125,13 +125,15 @@ export default function Reports() {
     <DashboardLayout title="Reports" subtitle="Generate reports and view analytics">
       <div className="space-y-6 animate-fade-in-up">
         <Tabs defaultValue="templates" className="w-full">
-          <TabsList className="bg-[#f1f5f9] border border-[#e2e8f0]">
-            <TabsTrigger value="templates">Report Templates</TabsTrigger>
-            <TabsTrigger value="admin">Admin Reports</TabsTrigger>
-            <TabsTrigger value="progress">Course Progress</TabsTrigger>
-            <TabsTrigger value="competency">Competency Matrix</TabsTrigger>
-            <TabsTrigger value="comparison">Progress Comparison</TabsTrigger>
-          </TabsList>
+          <div className="overflow-x-auto -mx-1 px-1">
+            <TabsList className="bg-[#f1f5f9] border border-[#e2e8f0] w-full sm:w-auto inline-flex">
+              <TabsTrigger value="templates" className="text-xs sm:text-sm">Report Templates</TabsTrigger>
+              <TabsTrigger value="admin" className="text-xs sm:text-sm">Admin Reports</TabsTrigger>
+              <TabsTrigger value="progress" className="text-xs sm:text-sm">Course Progress</TabsTrigger>
+              <TabsTrigger value="competency" className="text-xs sm:text-sm">Competency Matrix</TabsTrigger>
+              <TabsTrigger value="comparison" className="text-xs sm:text-sm">Progress Comparison</TabsTrigger>
+            </TabsList>
+          </div>
 
           {/* Report Templates Tab */}
           <TabsContent value="templates" className="space-y-6 mt-4">
