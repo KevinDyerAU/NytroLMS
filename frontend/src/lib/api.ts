@@ -6108,3 +6108,186 @@ export async function checkLlnCompletion(userId: number, courseId: number): Prom
     return false;
   }
 }
+
+// ─── Calendar Events ────────────────────────────────────────────────────────
+
+export type CalendarEventType =
+  | 'course_start'
+  | 'course_end'
+  | 'course_expiry'
+  | 'course_completed'
+  | 'assessment_submitted'
+  | 'cert_issued';
+
+export interface CalendarEvent {
+  id: string;
+  title: string;
+  date: string;              // ISO date string
+  type: CalendarEventType;
+  meta?: {
+    studentId?: number;
+    studentName?: string;
+    courseId?: number;
+    courseTitle?: string;
+    status?: string;
+    enrolmentId?: number;
+    attemptId?: number;
+    quizTitle?: string;
+  };
+}
+
+export async function fetchCalendarEvents(params: {
+  from: string;   // ISO date YYYY-MM-DD
+  to: string;     // ISO date YYYY-MM-DD
+}): Promise<CalendarEvent[]> {
+  assertConfigured();
+  try {
+    const { from, to } = params;
+    const toEnd = `${to}T23:59:59`;
+
+    // Parallel-fetch all event sources
+    const [
+      { data: enrolments },
+      { data: assessments },
+    ] = await Promise.all([
+      // 1. Enrolment date events (start, end, expiry, completed, cert issued)
+      supabase
+        .from('student_course_enrolments')
+        .select('id, user_id, course_id, status, course_start_at, course_ends_at, course_expiry, course_completed_at, cert_issued, cert_issued_on')
+        .or(
+          `course_start_at.gte.${from},course_start_at.lte.${toEnd},` +
+          `course_ends_at.gte.${from},course_ends_at.lte.${toEnd},` +
+          `course_expiry.gte.${from},course_expiry.lte.${toEnd},` +
+          `course_completed_at.gte.${from},course_completed_at.lte.${toEnd},` +
+          `cert_issued_on.gte.${from},cert_issued_on.lte.${toEnd}`
+        ),
+
+      // 2. Assessment submissions
+      supabase
+        .from('quiz_attempts')
+        .select('id, user_id, course_id, quiz_id, status, submitted_at')
+        .not('submitted_at', 'is', null)
+        .gte('submitted_at', from)
+        .lte('submitted_at', toEnd),
+    ]);
+
+    // Collect IDs for name resolution
+    const userIds = new Set<number>();
+    const courseIds = new Set<number>();
+    const quizIds = new Set<number>();
+
+    (enrolments ?? []).forEach(e => { userIds.add(e.user_id); courseIds.add(e.course_id); });
+    (assessments ?? []).forEach(a => { userIds.add(a.user_id); courseIds.add(a.course_id); quizIds.add(a.quiz_id); });
+
+    // Resolve names in parallel
+    const userIdArr = Array.from(userIds);
+    const courseIdArr = Array.from(courseIds);
+    const quizIdArr = Array.from(quizIds);
+
+    const [
+      { data: users },
+      { data: courses },
+      { data: quizzes },
+    ] = await Promise.all([
+      userIdArr.length > 0
+        ? supabase.from('users').select('id, first_name, last_name').in('id', userIdArr)
+        : Promise.resolve({ data: [] as { id: number; first_name: string; last_name: string }[] }),
+      courseIdArr.length > 0
+        ? supabase.from('courses').select('id, title').in('id', courseIdArr)
+        : Promise.resolve({ data: [] as { id: number; title: string }[] }),
+      quizIdArr.length > 0
+        ? supabase.from('quizzes').select('id, title').in('id', quizIdArr)
+        : Promise.resolve({ data: [] as { id: number; title: string }[] }),
+    ]);
+
+    const userMap = new Map<number, string>();
+    (users ?? []).forEach(u => userMap.set(u.id, `${u.first_name} ${u.last_name}`));
+
+    const courseMap = new Map<number, string>();
+    (courses ?? []).forEach(c => courseMap.set(c.id, c.title));
+
+    const quizMap = new Map<number, string>();
+    (quizzes ?? []).forEach(q => quizMap.set(q.id, q.title));
+
+    // Build events array
+    const events: CalendarEvent[] = [];
+    const inRange = (d: string | null) => d && d >= from && d <= toEnd;
+
+    (enrolments ?? []).forEach(e => {
+      const sName = userMap.get(e.user_id) ?? 'Unknown';
+      const cTitle = courseMap.get(e.course_id) ?? 'Unknown Course';
+      const baseMeta = { studentId: e.user_id, studentName: sName, courseId: e.course_id, courseTitle: cTitle, status: e.status, enrolmentId: e.id };
+
+      if (inRange(e.course_start_at)) {
+        events.push({
+          id: `enrol-start-${e.id}`,
+          title: `${sName} — Course Start: ${cTitle}`,
+          date: e.course_start_at!.slice(0, 10),
+          type: 'course_start',
+          meta: baseMeta,
+        });
+      }
+      if (inRange(e.course_ends_at)) {
+        events.push({
+          id: `enrol-end-${e.id}`,
+          title: `${sName} — Course Due: ${cTitle}`,
+          date: e.course_ends_at!.slice(0, 10),
+          type: 'course_end',
+          meta: baseMeta,
+        });
+      }
+      if (inRange(e.course_expiry)) {
+        events.push({
+          id: `enrol-expiry-${e.id}`,
+          title: `${sName} — Course Expiry: ${cTitle}`,
+          date: e.course_expiry!.slice(0, 10),
+          type: 'course_expiry',
+          meta: baseMeta,
+        });
+      }
+      if (inRange(e.course_completed_at)) {
+        events.push({
+          id: `enrol-completed-${e.id}`,
+          title: `${sName} — Completed: ${cTitle}`,
+          date: e.course_completed_at!.slice(0, 10),
+          type: 'course_completed',
+          meta: baseMeta,
+        });
+      }
+      if (e.cert_issued === 1 && inRange(e.cert_issued_on)) {
+        events.push({
+          id: `cert-${e.id}`,
+          title: `${sName} — Certificate Issued: ${cTitle}`,
+          date: e.cert_issued_on!.slice(0, 10),
+          type: 'cert_issued',
+          meta: baseMeta,
+        });
+      }
+    });
+
+    (assessments ?? []).forEach(a => {
+      const sName = userMap.get(a.user_id) ?? 'Unknown';
+      const cTitle = courseMap.get(a.course_id) ?? 'Unknown Course';
+      const qTitle = quizMap.get(a.quiz_id) ?? 'Assessment';
+      events.push({
+        id: `assess-${a.id}`,
+        title: `${sName} — Submitted: ${qTitle}`,
+        date: a.submitted_at!.slice(0, 10),
+        type: 'assessment_submitted',
+        meta: {
+          studentId: a.user_id,
+          studentName: sName,
+          courseId: a.course_id,
+          courseTitle: cTitle,
+          status: a.status,
+          attemptId: a.id,
+          quizTitle: qTitle,
+        },
+      });
+    });
+
+    return events;
+  } catch (e) {
+    handleError(e, 'Failed to fetch calendar events');
+  }
+}
