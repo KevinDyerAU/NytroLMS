@@ -148,7 +148,7 @@ export default function Enrolments() {
 
         {/* Loading State */}
         {loading && (
-          <Card className="p-12 flex items-center justify-center border-[#e2e8f0]/50 shadow-card">
+          <Card className="p-12 flex items-center justify-center border-[#3b82f6]/20 shadow-card">
             <Loader2 className="w-6 h-6 animate-spin text-[#3b82f6]" />
             <span className="ml-3 text-sm text-[#64748b]">Loading enrolments...</span>
           </Card>
@@ -156,7 +156,7 @@ export default function Enrolments() {
 
         {/* Data Table */}
         {!loading && !error && (
-          <Card className="overflow-hidden border-[#e2e8f0]/50 shadow-card">
+          <Card className="overflow-hidden border-[#3b82f6]/20 shadow-card">
             <div className="overflow-x-auto">
               <table className="w-full">
                 <thead>

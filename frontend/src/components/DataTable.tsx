@@ -163,11 +163,11 @@ export function DataTable<T extends { id?: number | string }>({
       </div>
 
       {/* Table */}
-      <div className="rounded-xl border border-slate-200/60 bg-white/70 backdrop-blur-sm shadow-sm overflow-hidden">
+      <div className="rounded-xl border border-[#3b82f6]/20 bg-white/70 backdrop-blur-sm shadow-sm overflow-hidden">
         <div className="overflow-x-auto">
           <table className="w-full text-sm">
             <thead>
-              <tr className="border-b border-slate-100 bg-slate-50/80">
+              <tr className="border-b border-[#3b82f6]/10 bg-slate-50/80">
                 {selectable && (
                   <th className="px-3 py-3 w-10">
                     <Checkbox
@@ -240,7 +240,7 @@ export function DataTable<T extends { id?: number | string }>({
 
         {/* Pagination */}
         {totalPages > 1 && (
-          <div className="flex items-center justify-between border-t border-slate-100 px-4 py-3 bg-slate-50/50">
+          <div className="flex items-center justify-between border-t border-[#3b82f6]/10 px-4 py-3 bg-slate-50/50">
             <p className="text-xs text-muted-foreground">
               Showing {page * pageSize + 1}–{Math.min((page + 1) * pageSize, total ?? filteredData.length)} of{' '}
               {total ?? filteredData.length}

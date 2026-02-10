@@ -28,7 +28,16 @@ function assertConfigured() {
 }
 
 function handleError(error: unknown, context: string): never {
-  const msg = error instanceof Error ? error.message : String(error);
+  let msg: string;
+  if (error instanceof Error) {
+    msg = error.message;
+  } else if (error && typeof error === 'object' && 'message' in error) {
+    msg = String((error as { message: unknown }).message);
+  } else if (typeof error === 'string') {
+    msg = error;
+  } else {
+    try { msg = JSON.stringify(error); } catch { msg = 'Unknown error'; }
+  }
   console.error(`[API] ${context}:`, msg);
   throw new ApiError(`${context}: ${msg}`);
 }

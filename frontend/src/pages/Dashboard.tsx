@@ -62,7 +62,7 @@ export default function Dashboard() {
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
           {statsLoading ? (
             Array.from({ length: 4 }).map((_, i) => (
-              <Card key={i} className="p-5 border-slate-200/50 shadow-card animate-pulse">
+              <Card key={i} className="p-5 border-[#3b82f6]/20 shadow-card animate-pulse">
                 <div className="h-4 w-24 bg-slate-200 rounded mb-3" />
                 <div className="h-8 w-16 bg-slate-200 rounded" />
               </Card>
@@ -147,7 +147,7 @@ export default function Dashboard() {
         {/* Row 3: Top Courses & Quick Actions side by side */}
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
           {/* Top Courses by Enrolment */}
-          <Card className="lg:col-span-2 p-0 overflow-hidden border-[#e2e8f0]/50 shadow-card">
+          <Card className="lg:col-span-2 p-0 overflow-hidden border-[#3b82f6]/20 shadow-card">
             <div className="flex items-center justify-between px-5 py-4 border-b border-[#e2e8f0]">
               <div className="flex items-center gap-2">
                 <TrendingUp className="w-4 h-4 text-[#14b8a6]" />
@@ -191,32 +191,32 @@ export default function Dashboard() {
           </Card>
 
           {/* Quick Actions */}
-          <Card className="p-5 border-[#e2e8f0]/50 shadow-card">
+          <Card className="p-5 border-[#3b82f6]/20 shadow-card">
             <div className="flex items-center gap-2 mb-4">
               <Zap className="w-4 h-4 text-[#f59e0b]" />
               <h3 className="font-heading font-semibold text-[#1e293b]">Quick Actions</h3>
             </div>
             <div className="grid grid-cols-2 gap-3">
               <Link to="/students">
-                <Button variant="outline" className="w-full h-auto py-4 flex flex-col gap-2 border-[#e2e8f0] hover:border-[#3b82f6] hover:bg-[#eff6ff] transition-all">
+                <Button variant="outline" className="w-full h-auto py-4 flex flex-col gap-2 border-[#3b82f6]/20 hover:border-[#3b82f6] hover:bg-[#eff6ff] transition-all">
                   <UserPlus className="w-5 h-5 text-[#3b82f6]" />
                   <span className="text-xs font-medium">Add Learner</span>
                 </Button>
               </Link>
               <Link to="/courses">
-                <Button variant="outline" className="w-full h-auto py-4 flex flex-col gap-2 border-[#e2e8f0] hover:border-[#14b8a6] hover:bg-[#f0fdfa] transition-all">
+                <Button variant="outline" className="w-full h-auto py-4 flex flex-col gap-2 border-[#3b82f6]/20 hover:border-[#14b8a6] hover:bg-[#f0fdfa] transition-all">
                   <BookOpen className="w-5 h-5 text-[#14b8a6]" />
                   <span className="text-xs font-medium">New Journey</span>
                 </Button>
               </Link>
               <Link to="/assessments">
-                <Button variant="outline" className="w-full h-auto py-4 flex flex-col gap-2 border-[#e2e8f0] hover:border-[#f59e0b] hover:bg-[#fffbeb] transition-all">
+                <Button variant="outline" className="w-full h-auto py-4 flex flex-col gap-2 border-[#3b82f6]/20 hover:border-[#f59e0b] hover:bg-[#fffbeb] transition-all">
                   <ClipboardCheck className="w-5 h-5 text-[#f59e0b]" />
                   <span className="text-xs font-medium">Mark Assessment</span>
                 </Button>
               </Link>
               <Link to="/reports">
-                <Button variant="outline" className="w-full h-auto py-4 flex flex-col gap-2 border-[#e2e8f0] hover:border-[#8b5cf6] hover:bg-[#f5f3ff] transition-all">
+                <Button variant="outline" className="w-full h-auto py-4 flex flex-col gap-2 border-[#3b82f6]/20 hover:border-[#8b5cf6] hover:bg-[#f5f3ff] transition-all">
                   <BarChart3 className="w-5 h-5 text-[#8b5cf6]" />
                   <span className="text-xs font-medium">View Reports</span>
                 </Button>

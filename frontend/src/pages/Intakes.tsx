@@ -81,7 +81,7 @@ export default function Intakes() {
       <div className="space-y-4 animate-fade-in-up">
         {/* Summary row */}
         <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-          <Card className="p-4 border-[#e2e8f0]/50">
+          <Card className="p-4 border-[#3b82f6]/20">
             <div className="flex items-center gap-3">
               <div className="w-9 h-9 rounded-lg bg-[#eff6ff] flex items-center justify-center">
                 <Calendar className="w-4 h-4 text-[#3b82f6]" />
@@ -92,7 +92,7 @@ export default function Intakes() {
               </div>
             </div>
           </Card>
-          <Card className="p-4 border-[#e2e8f0]/50">
+          <Card className="p-4 border-[#3b82f6]/20">
             <div className="flex items-center gap-3">
               <div className="w-9 h-9 rounded-lg bg-[#f0fdfa] flex items-center justify-center">
                 <Users className="w-4 h-4 text-[#14b8a6]" />
@@ -103,7 +103,7 @@ export default function Intakes() {
               </div>
             </div>
           </Card>
-          <Card className="p-4 border-[#e2e8f0]/50">
+          <Card className="p-4 border-[#3b82f6]/20">
             <div className="flex items-center gap-3">
               <div className="w-9 h-9 rounded-lg bg-[#f0fdf4] flex items-center justify-center">
                 <CheckCircle2 className="w-4 h-4 text-[#22c55e]" />
@@ -125,7 +125,7 @@ export default function Intakes() {
         ) : error ? (
           <Card className="p-5 text-center text-red-500 text-sm">Failed to load: {error}</Card>
         ) : !cohorts || cohorts.length === 0 ? (
-          <Card className="p-8 text-center border-[#e2e8f0]/50">
+          <Card className="p-8 text-center border-[#3b82f6]/20">
             <Users className="mx-auto mb-3 h-10 w-10 text-[#94a3b8]" />
             <h3 className="text-lg font-semibold text-[#1e293b]">No intake data</h3>
             <p className="mt-1 text-sm text-[#64748b]">
@@ -140,7 +140,7 @@ export default function Intakes() {
                 : 0;
 
               return (
-                <Card key={cohort.month} className="p-4 border-[#e2e8f0]/50 shadow-card hover:shadow-md transition-shadow">
+                <Card key={cohort.month} className="p-4 border-[#3b82f6]/20 shadow-card hover:shadow-md transition-shadow">
                   <div className="flex items-center justify-between">
                     <div className="flex items-center gap-4">
                       <div className={cn(

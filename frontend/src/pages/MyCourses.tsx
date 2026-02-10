@@ -119,7 +119,7 @@ function CourseDetailView({ course, userId, onBack }: {
         </Button>
       </div>
 
-      <Card className="p-6 border-[#e2e8f0]/50 shadow-card">
+      <Card className="p-6 border-[#3b82f6]/20 shadow-card">
         <div className="flex items-start justify-between">
           <div>
             <h2 className="text-xl font-bold text-[#1e293b]">{course.course_title}</h2>
@@ -195,7 +195,7 @@ function CourseDetailView({ course, userId, onBack }: {
             );
 
             return (
-              <Card key={lesson.id} className="overflow-hidden border-[#e2e8f0]/50">
+              <Card key={lesson.id} className="overflow-hidden border-[#3b82f6]/20">
                 <button
                   onClick={() => toggleLesson(lesson.id)}
                   className="w-full flex items-center justify-between px-5 py-3.5 hover:bg-[#f8fafc] transition-colors"
@@ -329,7 +329,7 @@ export default function MyCourses() {
         ) : error ? (
           <Card className="p-5 text-center text-red-500 text-sm">Failed to load: {error}</Card>
         ) : !courses || courses.length === 0 ? (
-          <Card className="p-8 text-center border-[#e2e8f0]/50">
+          <Card className="p-8 text-center border-[#3b82f6]/20">
             <GraduationCap className="mx-auto mb-3 h-10 w-10 text-[#94a3b8]" />
             <h3 className="text-lg font-semibold text-[#1e293b]">No courses yet</h3>
             <p className="mt-1 text-sm text-[#64748b] max-w-md mx-auto">
@@ -341,7 +341,7 @@ export default function MyCourses() {
             {courses.map((course) => (
               <Card
                 key={course.enrolment_id}
-                className="p-5 border-[#e2e8f0]/50 shadow-card hover:shadow-md transition-shadow cursor-pointer"
+                className="p-5 border-[#3b82f6]/20 shadow-card hover:shadow-md transition-shadow cursor-pointer"
                 onClick={() => setSelectedCourse(course)}
               >
                 <div className="flex items-start justify-between mb-3">

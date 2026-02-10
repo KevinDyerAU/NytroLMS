@@ -140,7 +140,7 @@ export default function Reports() {
             {reportCategories.map((category) => {
               const Icon = category.icon;
               return (
-                <Card key={category.title} className="p-5 border-[#e2e8f0]/50 shadow-card">
+                <Card key={category.title} className="p-5 border-[#3b82f6]/20 shadow-card">
                   <div className="flex items-center gap-3 mb-4">
                     <div className={`p-2 rounded-lg ${category.bg}`}>
                       <Icon className={`w-5 h-5 ${category.color}`} />
@@ -214,12 +214,12 @@ export default function Reports() {
             )}
 
             {reportsLoading ? (
-              <Card className="p-12 flex items-center justify-center border-[#e2e8f0]/50 shadow-card">
+              <Card className="p-12 flex items-center justify-center border-[#3b82f6]/20 shadow-card">
                 <Loader2 className="w-6 h-6 animate-spin text-[#3b82f6]" />
                 <span className="ml-3 text-sm text-[#64748b]">Loading admin reports...</span>
               </Card>
             ) : (
-              <Card className="overflow-hidden border-[#e2e8f0]/50 shadow-card">
+              <Card className="overflow-hidden border-[#3b82f6]/20 shadow-card">
                 <div className="overflow-x-auto">
                   <table className="w-full">
                     <thead>
@@ -281,19 +281,19 @@ export default function Reports() {
           {/* Course Progress Tab */}
           <TabsContent value="progress" className="space-y-4 mt-4">
             {progressLoading ? (
-              <Card className="p-12 flex items-center justify-center border-[#e2e8f0]/50 shadow-card">
+              <Card className="p-12 flex items-center justify-center border-[#3b82f6]/20 shadow-card">
                 <Loader2 className="w-6 h-6 animate-spin text-[#3b82f6]" />
                 <span className="ml-3 text-sm text-[#64748b]">Loading course progress...</span>
               </Card>
             ) : courseProgress.length === 0 ? (
-              <Card className="p-12 text-center border-[#e2e8f0]/50">
+              <Card className="p-12 text-center border-[#3b82f6]/20">
                 <BarChart3 className="w-10 h-10 text-[#94a3b8] mx-auto mb-3" />
                 <p className="text-sm text-[#94a3b8]">No course progress data available.</p>
               </Card>
             ) : (
               <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
                 {courseProgress.map((cp) => (
-                  <Card key={cp.course_id} className="p-5 border-[#e2e8f0]/50 shadow-card">
+                  <Card key={cp.course_id} className="p-5 border-[#3b82f6]/20 shadow-card">
                     <h4 className="font-heading font-semibold text-[#1e293b] mb-3 text-sm">{cp.course_title}</h4>
                     <div className="grid grid-cols-4 gap-3 mb-4">
                       <div className="text-center">

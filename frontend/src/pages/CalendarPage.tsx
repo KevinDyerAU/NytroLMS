@@ -35,7 +35,7 @@ export default function CalendarPage() {
   return (
     <DashboardLayout title="Calendar" subtitle="Activities, due dates, and events">
       <div className="space-y-6 animate-fade-in-up">
-        <Card className="p-6 border-[#e2e8f0]/50 shadow-card">
+        <Card className="p-6 border-[#3b82f6]/20 shadow-card">
           {/* Calendar header */}
           <div className="flex items-center justify-between mb-6">
             <h2 className="text-lg font-semibold text-[#1e293b]">
@@ -83,7 +83,7 @@ export default function CalendarPage() {
         </Card>
 
         {/* Upcoming events placeholder */}
-        <Card className="p-6 border-[#e2e8f0]/50 shadow-card">
+        <Card className="p-6 border-[#3b82f6]/20 shadow-card">
           <div className="flex items-center gap-2 mb-4">
             <Calendar className="w-4 h-4 text-[#3b82f6]" />
             <h3 className="font-semibold text-[#1e293b]">Upcoming Events</h3>

@@ -66,7 +66,7 @@ export default function AllRecords() {
     <DashboardLayout title="Activity Timeline" subtitle="Global activity feed across all records">
       <div className="space-y-4 animate-fade-in-up">
         {/* Toolbar */}
-        <Card className="p-4 border-[#e2e8f0] shadow-card">
+        <Card className="p-4 border-[#3b82f6]/20 shadow-card">
           <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
             <div className="flex items-center gap-3 w-full sm:w-auto flex-wrap">
               <div className="relative w-full sm:w-72">
@@ -143,7 +143,7 @@ export default function AllRecords() {
 
         {/* Loading */}
         {loading && (
-          <Card className="p-12 flex flex-col items-center justify-center border-[#e2e8f0] shadow-card">
+          <Card className="p-12 flex flex-col items-center justify-center border-[#3b82f6]/20 shadow-card">
             <Loader2 className="w-7 h-7 animate-spin text-[#3b82f6]" />
             <span className="mt-3 text-sm text-[#64748b]">Loading activity feed...</span>
           </Card>
@@ -153,7 +153,7 @@ export default function AllRecords() {
         {!loading && !error && (
           <>
             {activities.length === 0 ? (
-              <Card className="p-10 text-center border-[#e2e8f0] shadow-card">
+              <Card className="p-10 text-center border-[#3b82f6]/20 shadow-card">
                 <div className="inline-flex p-3 bg-[#f1f5f9] rounded-xl mb-4">
                   <Activity className="h-8 w-8 text-[#94a3b8]" />
                 </div>
@@ -180,7 +180,7 @@ export default function AllRecords() {
                         </div>
 
                         {/* Card */}
-                        <Card className="flex-1 px-4 py-3 border-[#e2e8f0] hover:border-[#cbd5e1] hover:shadow-sm transition-all my-0.5">
+                        <Card className="flex-1 px-4 py-3 border-[#3b82f6]/20 hover:border-[#3b82f6]/40 hover:shadow-sm transition-all my-0.5">
                           <div className="flex items-start justify-between gap-3">
                             <div className="flex-1 min-w-0">
                               <div className="flex items-center gap-2 flex-wrap">
@@ -230,7 +230,7 @@ export default function AllRecords() {
 
             {/* Pagination */}
             {totalPages > 1 && (
-              <Card className="flex items-center justify-between px-4 py-3 border-[#e2e8f0] shadow-card">
+              <Card className="flex items-center justify-between px-4 py-3 border-[#3b82f6]/20 shadow-card">
                 <p className="text-xs text-[#64748b]">
                   Showing <strong className="text-[#1e293b]">{page * LIMIT + 1}–{Math.min((page + 1) * LIMIT, total)}</strong> of <strong className="text-[#1e293b]">{total.toLocaleString()}</strong>
                 </p>

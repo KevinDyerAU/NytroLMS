@@ -31,7 +31,7 @@ export function KPIWidget({ label, value, icon: Icon, trend, subtitle, color = '
   const colors = colorMap[color];
 
   const content = (
-    <div className="bg-white rounded-xl p-5 shadow-card border border-[#e2e8f0]/50 hover:shadow-md transition-shadow duration-200 h-full">
+    <div className="bg-white rounded-xl p-5 shadow-card border border-[#3b82f6]/20 hover:shadow-md transition-shadow duration-200 h-full">
       <div className="flex items-start justify-between">
         <div className="space-y-2">
           <p className="text-sm font-medium text-[#64748b]">{label}</p>

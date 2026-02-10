@@ -69,7 +69,7 @@ export function ProgressComparison() {
     : 0;
 
   return (
-    <Card className="border-[#e2e8f0] shadow-card">
+    <Card className="border-[#3b82f6]/20 shadow-card">
       <CardHeader>
         <div className="flex items-center justify-between gap-3 flex-wrap">
           <CardTitle className="text-base text-[#3b82f6] flex items-center gap-2">

@@ -138,7 +138,7 @@ export default function Courses() {
             </Select>
           </div>
           <div className="flex items-center gap-2">
-            <div className="flex border border-[#e2e8f0] rounded-lg overflow-hidden">
+            <div className="flex border border-[#3b82f6]/20 rounded-lg overflow-hidden">
               <button
                 onClick={() => setViewMode('grid')}
                 className={cn("p-1.5", viewMode === 'grid' ? 'bg-[#eff6ff] text-[#3b82f6]' : 'text-[#94a3b8] hover:bg-[#f8fafc]')}
@@ -182,7 +182,7 @@ export default function Courses() {
         {!loading && !error && viewMode === 'grid' && (
           <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
             {courses.length === 0 ? (
-              <Card className="col-span-full p-12 text-center border-slate-200/50">
+              <Card className="col-span-full p-12 text-center border-[#3b82f6]/20">
                 <BookOpen className="mx-auto mb-3 h-8 w-8 text-slate-300" />
                 <p className="text-sm text-muted-foreground">No courses found</p>
               </Card>
@@ -190,7 +190,7 @@ export default function Courses() {
               courses.map((course) => (
                 <Card
                   key={course.id}
-                  className="p-5 border-[#e2e8f0]/50 shadow-card hover:shadow-md transition-shadow group cursor-pointer"
+                  className="p-5 border-[#3b82f6]/20 shadow-card hover:shadow-md transition-shadow group cursor-pointer"
                   onClick={() => setSelectedCourseId(course.id)}
                 >
                   <div className="flex items-start justify-between mb-3">
@@ -226,7 +226,7 @@ export default function Courses() {
 
         {/* Course List */}
         {!loading && !error && viewMode === 'list' && (
-          <Card className="overflow-hidden border-[#e2e8f0]/50 shadow-card">
+          <Card className="overflow-hidden border-[#3b82f6]/20 shadow-card">
             <div className="overflow-x-auto">
               <table className="w-full">
                 <thead>
