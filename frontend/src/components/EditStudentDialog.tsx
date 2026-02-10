@@ -180,7 +180,7 @@ export function EditStudentDialog({ open, onOpenChange, studentId, onSaved }: Ed
 
             {/* Read-only info */}
             {student && (
-              <div className="space-y-2 pt-2 border-t border-[#e2e8f0]">
+              <div className="space-y-2 pt-2 border-t border-[#3b82f6]/10">
                 <h3 className="text-sm font-semibold text-[#64748b] uppercase tracking-wider">Assignments (read-only)</h3>
                 <div className="grid grid-cols-2 gap-2 text-sm text-[#64748b]">
                   <div>

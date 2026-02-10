@@ -204,7 +204,7 @@ export function AddCourseDialog({ open, onOpenChange, onSaved }: AddCourseDialog
           </div>
 
           {/* Lessons Section */}
-          <div className="space-y-3 border-t border-[#e2e8f0] pt-4">
+          <div className="space-y-3 border-t border-[#3b82f6]/10 pt-4">
             <div className="flex items-center justify-between">
               <h3 className="text-sm font-semibold text-[#64748b] uppercase tracking-wider">Lessons</h3>
               <Button type="button" variant="outline" size="sm" onClick={addLessonDraft}>
@@ -217,7 +217,7 @@ export function AddCourseDialog({ open, onOpenChange, onSaved }: AddCourseDialog
             ) : (
               <div className="space-y-3">
                 {lessons.map((lesson, idx) => (
-                  <div key={lesson.id} className="border border-[#e2e8f0] rounded-lg p-3 space-y-2 bg-[#f8fafc]">
+                  <div key={lesson.id} className="border border-[#3b82f6]/20 rounded-lg p-3 space-y-2 bg-[#f8fafc]">
                     <div className="flex items-center gap-2">
                       <span className="text-xs font-semibold text-[#3b82f6] bg-[#eff6ff] rounded px-1.5 py-0.5">{idx + 1}</span>
                       <Input

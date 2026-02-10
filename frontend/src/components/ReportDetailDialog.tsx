@@ -165,7 +165,7 @@ export function ReportDetailDialog({ open, onOpenChange, reportId }: ReportDetai
             )}
 
             {/* Meta */}
-            <div className="border-t border-[#e2e8f0] pt-3 grid grid-cols-2 gap-2 text-sm">
+            <div className="border-t border-[#3b82f6]/10 pt-3 grid grid-cols-2 gap-2 text-sm">
               <DetailRow label="Main Course">{data.is_main_course === 1 ? 'Yes' : 'No'}</DetailRow>
               <DetailRow label="Next Course Allowed">{data.allowed_to_next_course}</DetailRow>
               <DetailRow label="Updated">

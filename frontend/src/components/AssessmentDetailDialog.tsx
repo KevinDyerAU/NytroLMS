@@ -186,7 +186,7 @@ export function AssessmentDetailDialog({ open, onOpenChange, attemptId }: Assess
             </div>
 
             {/* Metadata Row */}
-            <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 text-xs bg-[#f8fafc] rounded-lg p-3 border border-[#e2e8f0]">
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 text-xs bg-[#f8fafc] rounded-lg p-3 border border-[#3b82f6]/10">
               <div><span className="text-[#94a3b8]">Attempt</span> <span className="font-medium text-[#1e293b] ml-1">#{data.attempt}</span></div>
               <div><span className="text-[#94a3b8]">Assisted</span> <span className="font-medium text-[#1e293b] ml-1">{data.assisted === 1 ? 'Yes' : 'No'}</span></div>
               {data.passing_percentage != null && data.passing_percentage > 0 && (
@@ -221,7 +221,7 @@ export function AssessmentDetailDialog({ open, onOpenChange, attemptId }: Assess
 
             {/* Tabs: Questions | Feedback | Actions */}
             <Tabs value={activeTab} onValueChange={setActiveTab}>
-              <TabsList className="bg-white border border-[#e2e8f0] w-full justify-start">
+              <TabsList className="bg-white border border-[#3b82f6]/20 w-full justify-start">
                 <TabsTrigger value="questions" className="text-xs">
                   <ClipboardCheck className="w-3.5 h-3.5 mr-1" /> Questions ({data.questions.length})
                 </TabsTrigger>
@@ -272,7 +272,7 @@ export function AssessmentDetailDialog({ open, onOpenChange, attemptId }: Assess
                   <p className="text-sm text-[#94a3b8] text-center py-6">No feedback yet</p>
                 ) : (
                   data.feedbacks.map((fb) => (
-                    <Card key={fb.id} className="border-[#e2e8f0]">
+                    <Card key={fb.id} className="border-[#3b82f6]/20">
                       <CardContent className="p-4">
                         <div className="flex items-start justify-between gap-2">
                           <div className="flex-1 min-w-0">
@@ -306,7 +306,7 @@ export function AssessmentDetailDialog({ open, onOpenChange, attemptId }: Assess
               {/* ── Mark Assessment Tab ── */}
               {canMark && (
                 <TabsContent value="mark" className="mt-3 space-y-4">
-                  <Card className="border-[#e2e8f0]">
+                  <Card className="border-[#3b82f6]/20">
                     <CardContent className="p-4 space-y-4">
                       <h4 className="font-medium text-[#1e293b] text-sm">Submit Overall Assessment</h4>
                       <div className="flex gap-2">
@@ -328,7 +328,7 @@ export function AssessmentDetailDialog({ open, onOpenChange, attemptId }: Assess
                         </Button>
                       </div>
                       <textarea
-                        className="w-full min-h-[80px] rounded-md border border-[#e2e8f0] px-3 py-2 text-sm placeholder:text-[#94a3b8] focus:outline-none focus:ring-2 focus:ring-[#3b82f6] resize-none"
+                        className="w-full min-h-[80px] rounded-md border border-[#3b82f6]/10 px-3 py-2 text-sm placeholder:text-[#94a3b8] focus:outline-none focus:ring-2 focus:ring-[#3b82f6] resize-none"
                         placeholder="Add feedback for the student..."
                         value={feedbackText}
                         onChange={(e) => setFeedbackText(e.target.value)}
@@ -414,7 +414,7 @@ function QuestionCard({
     ? (evalResult.status === 'satisfactory' || evalResult.status === 'correct')
       ? 'border-green-200 bg-green-50/30'
       : 'border-red-200 bg-red-50/30'
-    : 'border-[#e2e8f0]';
+    : 'border-[#3b82f6]/20';
 
   return (
     <div className={`border rounded-lg ${evalBorder} transition-colors`}>
@@ -436,7 +436,7 @@ function QuestionCard({
 
       {/* Expanded Content */}
       {expanded && (
-        <div className="px-4 pb-4 space-y-3 border-t border-[#e2e8f0]/50">
+        <div className="px-4 pb-4 space-y-3 border-t border-[#3b82f6]/10">
           {/* Question Content */}
           <div className="pt-3">
             <p className="text-xs font-medium text-[#94a3b8] uppercase mb-1">Question</p>
@@ -475,7 +475,7 @@ function QuestionCard({
           {/* Student's Answer */}
           <div>
             <p className="text-xs font-medium text-[#94a3b8] uppercase mb-1">Student&apos;s Answer</p>
-            <div className="text-sm text-[#1e293b] bg-white rounded-md border border-[#e2e8f0] px-3 py-2">
+            <div className="text-sm text-[#1e293b] bg-white rounded-md border border-[#3b82f6]/10 px-3 py-2">
               {formatAnswer(answer)}
             </div>
           </div>
@@ -520,7 +520,7 @@ function QuestionCard({
                 </Button>
               </div>
               <input
-                className="w-full h-8 rounded-md border border-[#e2e8f0] px-2 text-xs focus:outline-none focus:ring-2 focus:ring-[#3b82f6]"
+                className="w-full h-8 rounded-md border border-[#3b82f6]/10 px-2 text-xs focus:outline-none focus:ring-2 focus:ring-[#3b82f6]"
                 placeholder="Comment (optional)"
                 value={markingComment}
                 onChange={(e) => onMarkingCommentChange(e.target.value)}

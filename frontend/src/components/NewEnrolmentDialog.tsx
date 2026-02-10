@@ -142,7 +142,7 @@ export function NewEnrolmentDialog({ open, onOpenChange, onSaved }: NewEnrolment
             <div>
               <Label>Student *</Label>
               {selectedStudent ? (
-                <div className="flex items-center justify-between p-2.5 border border-[#e2e8f0] rounded-md bg-[#f8fafc]">
+                <div className="flex items-center justify-between p-2.5 border border-[#3b82f6]/20 rounded-md bg-[#f8fafc]">
                   <div>
                     <p className="text-sm font-medium text-[#1e293b]">
                       {selectedStudent.first_name} {selectedStudent.last_name}
@@ -176,12 +176,12 @@ export function NewEnrolmentDialog({ open, onOpenChange, onSaved }: NewEnrolment
                     </div>
                   )}
                   {!loadingStudents && students.length > 0 && (
-                    <div className="border border-[#e2e8f0] rounded-md max-h-40 overflow-y-auto">
+                    <div className="border border-[#3b82f6]/20 rounded-md max-h-40 overflow-y-auto">
                       {students.map((s) => (
                         <button
                           key={s.id}
                           type="button"
-                          className="w-full text-left px-3 py-2 hover:bg-[#f8fafc] transition-colors border-b border-[#f1f5f9] last:border-0"
+                          className="w-full text-left px-3 py-2 hover:bg-[#f8fafc] transition-colors border-b border-[#3b82f6]/10 last:border-0"
                           onClick={() => setSelectedStudentId(String(s.id))}
                         >
                           <p className="text-sm font-medium text-[#1e293b]">{s.first_name} {s.last_name}</p>

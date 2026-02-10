@@ -166,7 +166,7 @@ export function LoginDialog({ open, onOpenChange }: LoginDialogProps) {
 
   return (
     <Dialog open={open} onOpenChange={handleOpenChange}>
-      <DialogContent className="sm:max-w-[420px] p-0 overflow-hidden bg-white rounded-xl shadow-xl border-0">
+      <DialogContent className="sm:max-w-[420px] p-0 overflow-hidden bg-white rounded-xl shadow-xl border-[#3b82f6]/20">
         {/* Clean white header */}
         <div className="px-8 pt-8 pb-4">
           <div className="flex items-start justify-between">
@@ -210,7 +210,7 @@ export function LoginDialog({ open, onOpenChange }: LoginDialogProps) {
                   placeholder="you@example.com"
                   value={email}
                   onChange={(e) => { setEmail(e.target.value); setEmailError(''); setErrorMessage(''); }}
-                  className={`mt-2 h-11 rounded-lg border-[#e2e8f0] focus:border-[#3b82f6] focus:ring-2 focus:ring-[#3b82f6]/20 ${emailError ? 'border-red-300 focus:border-red-500 focus:ring-red-200' : ''}`}
+                  className={`mt-2 h-11 rounded-lg border-[#3b82f6]/20 focus:border-[#3b82f6] focus:ring-2 focus:ring-[#3b82f6]/20 ${emailError ? 'border-red-300 focus:border-red-500 focus:ring-red-200' : ''}`}
                   autoComplete="email"
                 />
                 {emailError && <p className="text-xs text-red-500 mt-1.5">{emailError}</p>}
@@ -225,7 +225,7 @@ export function LoginDialog({ open, onOpenChange }: LoginDialogProps) {
                     placeholder="••••••••"
                     value={password}
                     onChange={(e) => { setPassword(e.target.value); setPasswordError(''); setErrorMessage(''); }}
-                    className={`h-11 rounded-lg border-[#e2e8f0] focus:border-[#3b82f6] focus:ring-2 focus:ring-[#3b82f6]/20 pr-11 ${passwordError ? 'border-red-300 focus:border-red-500 focus:ring-red-200' : ''}`}
+                    className={`h-11 rounded-lg border-[#3b82f6]/20 focus:border-[#3b82f6] focus:ring-2 focus:ring-[#3b82f6]/20 pr-11 ${passwordError ? 'border-red-300 focus:border-red-500 focus:ring-red-200' : ''}`}
                     autoComplete="current-password"
                   />
                   <button

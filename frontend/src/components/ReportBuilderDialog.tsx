@@ -228,7 +228,7 @@ export function ReportBuilderDialog({ open, onOpenChange }: ReportBuilderDialogP
                         className={`p-4 cursor-pointer transition-all border-2 ${
                           selectedReport === report.id
                             ? 'border-[#3b82f6] bg-[#f8fafc]'
-                            : 'border-transparent hover:border-[#e2e8f0]'
+                            : 'border-transparent hover:border-[#3b82f6]/20'
                         }`}
                         onClick={() => setSelectedReport(report.id)}
                       >
@@ -254,7 +254,7 @@ export function ReportBuilderDialog({ open, onOpenChange }: ReportBuilderDialogP
 
               {/* Filters */}
               {selectedReportType && (
-                <div className="space-y-4 border-t border-[#e2e8f0] pt-4">
+                <div className="space-y-4 border-t border-[#3b82f6]/10 pt-4">
                   <Label>Report Filters</Label>
                   <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
                     {selectedReportType.supportsDateRange && (
@@ -329,7 +329,7 @@ export function ReportBuilderDialog({ open, onOpenChange }: ReportBuilderDialogP
               </div>
 
               {generatedReport.data.length > 0 ? (
-                <div className="border border-[#e2e8f0] rounded-md overflow-hidden max-h-96 overflow-y-auto">
+                <div className="border border-[#3b82f6]/20 rounded-md overflow-hidden max-h-96 overflow-y-auto">
                   <table className="w-full text-sm">
                     <thead className="bg-[#f8fafc] sticky top-0">
                       <tr>
@@ -353,7 +353,7 @@ export function ReportBuilderDialog({ open, onOpenChange }: ReportBuilderDialogP
                     </tbody>
                   </table>
                   {generatedReport.data.length > 100 && (
-                    <div className="px-3 py-2 text-xs text-[#94a3b8] text-center border-t border-[#e2e8f0]">
+                    <div className="px-3 py-2 text-xs text-[#94a3b8] text-center border-t border-[#3b82f6]/10">
                       Showing first 100 of {generatedReport.data.length} records. Export to see all.
                     </div>
                   )}

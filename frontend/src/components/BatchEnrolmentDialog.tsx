@@ -151,7 +151,7 @@ export function BatchEnrolmentDialog({ open, onOpenChange, onSaved }: BatchEnrol
             <div className="space-y-1.5">
               <Label className="text-sm font-medium text-[#1e293b]">Course <span className="text-red-400">*</span></Label>
               <Select value={selectedCourseId} onValueChange={setSelectedCourseId}>
-                <SelectTrigger className="border-[#e2e8f0]">
+                <SelectTrigger className="border-[#3b82f6]/20">
                   <SelectValue placeholder="Select a course..." />
                 </SelectTrigger>
                 <SelectContent>
@@ -173,7 +173,7 @@ export function BatchEnrolmentDialog({ open, onOpenChange, onSaved }: BatchEnrol
                   type="date"
                   value={courseStartAt}
                   onChange={(e) => setCourseStartAt(e.target.value)}
-                  className="border-[#e2e8f0]"
+                  className="border-[#3b82f6]/20"
                 />
               </div>
               <div className="space-y-1.5">
@@ -182,7 +182,7 @@ export function BatchEnrolmentDialog({ open, onOpenChange, onSaved }: BatchEnrol
                   type="date"
                   value={courseEndsAt}
                   onChange={(e) => setCourseEndsAt(e.target.value)}
-                  className="border-[#e2e8f0]"
+                  className="border-[#3b82f6]/20"
                 />
               </div>
             </div>
@@ -208,10 +208,10 @@ export function BatchEnrolmentDialog({ open, onOpenChange, onSaved }: BatchEnrol
                   placeholder="Search students..."
                   value={studentSearch}
                   onChange={(e) => setStudentSearch(e.target.value)}
-                  className="pl-8 h-8 text-sm border-[#e2e8f0]"
+                  className="pl-8 h-8 text-sm border-[#3b82f6]/20"
                 />
               </div>
-              <ScrollArea className="h-48 rounded-md border border-[#e2e8f0]">
+              <ScrollArea className="h-48 rounded-md border border-[#3b82f6]/20">
                 <div className="p-1">
                   {filteredStudents.length === 0 ? (
                     <p className="text-xs text-[#94a3b8] text-center py-4">No students found</p>
@@ -245,8 +245,8 @@ export function BatchEnrolmentDialog({ open, onOpenChange, onSaved }: BatchEnrol
           </div>
         )}
 
-        <DialogFooter className="border-t border-[#e2e8f0] pt-4">
-          <Button variant="outline" className="border-[#e2e8f0] text-[#64748b]" onClick={() => onOpenChange(false)}>Cancel</Button>
+        <DialogFooter>
+          <Button variant="outline" className="border-[#3b82f6]/20 text-[#64748b]" onClick={() => onOpenChange(false)}>Cancel</Button>
           <Button
             className="bg-[#3b82f6] hover:bg-[#2563eb] text-white"
             disabled={!selectedCourseId || selectedStudentIds.size === 0 || submitting}

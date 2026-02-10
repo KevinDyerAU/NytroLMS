@@ -84,7 +84,7 @@ export function EnrolmentDetailDialog({ open, onOpenChange, enrolmentId }: Enrol
               <StatusBadge status={data.status} />
             </div>
 
-            <div className="border-t border-[#e2e8f0] pt-3">
+            <div className="border-t border-[#3b82f6]/10 pt-3">
               <h4 className="font-medium text-[#1e293b] mb-2">{data.course_title}</h4>
 
               {data.progress_percentage !== null && (
